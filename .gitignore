@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+*.db
+*.log
+published_posts.json
+recently_suggested_topics.json
+.venv/
+venv/
+images/
+test_output.txt
+test_results.log
+deploy/*.key

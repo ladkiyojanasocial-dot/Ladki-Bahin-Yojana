@@ -1,0 +1,19 @@
+[Unit]
+Description=Kisan Portal Alerts Agent — Indian agriculture news & event blog
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/kisan-agent
+Environment=PYTHONIOENCODING=utf-8
+ExecStart=/opt/kisan-agent/venv/bin/python main.py
+Restart=always
+RestartSec=60
+
+# Logging
+StandardOutput=append:/opt/kisan-agent/logs/agent.log
+StandardError=append:/opt/kisan-agent/logs/agent_error.log
+
+[Install]
+WantedBy=multi-user.target
