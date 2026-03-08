@@ -94,6 +94,9 @@ $category = isset($data['category']) ? sanitize_text_field($data['category']) : 
 $rank_title = isset($data['rank_math_title']) ? sanitize_text_field($data['rank_math_title']) : $title;
 $rank_desc = isset($data['rank_math_description']) ? sanitize_textarea_field($data['rank_math_description']) : $excerpt;
 $rank_kw = isset($data['rank_math_focus_keyword']) ? sanitize_text_field($data['rank_math_focus_keyword']) : '';
+if ($rank_kw === '') {
+    $rank_kw = $title;
+}
 $faq_schema = isset($data['faq_schema']) ? $data['faq_schema'] : '';
 $lang = isset($data['lang']) ? sanitize_key($data['lang']) : '';
 
@@ -160,6 +163,11 @@ $post_arr = [
     'post_type' => 'post',
     'post_author' => $webhook_author_id,
     'comment_status' => 'open',
+    'meta_input' => [
+        'rank_math_title' => $rank_title,
+        'rank_math_description' => $rank_desc,
+        'rank_math_focus_keyword' => $rank_kw,
+    ],
 ];
 $post_id = wp_insert_post($post_arr, true);
 if (is_wp_error($post_id)) {
@@ -203,4 +211,9 @@ echo json_encode([
     'post_id' => (int) $post_id,
     'post_url' => $post_url,
     'status' => $status,
+    'seo_meta' => [
+        'rank_math_title' => get_post_meta($post_id, 'rank_math_title', true),
+        'rank_math_description' => get_post_meta($post_id, 'rank_math_description', true),
+        'rank_math_focus_keyword' => get_post_meta($post_id, 'rank_math_focus_keyword', true),
+    ],
 ]);

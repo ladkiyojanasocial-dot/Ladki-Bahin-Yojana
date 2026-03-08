@@ -101,6 +101,23 @@ def _resolve_post_id_from_slug(slug):
     return None
 
 
+def _get_rankmath_payload(article):
+    focus_kw = article.get("matched_keyword", "") or article.get("focus_keyword", "")
+    if not focus_kw and article.get("tags"):
+        focus_kw = article["tags"][0]
+    if not focus_kw:
+        focus_kw = article.get("title", "")
+
+    seo_title = (article.get("seo_title") or article.get("title") or "Untitled").strip()
+    meta_description = (article.get("meta_description") or "").strip()
+
+    return {
+        "rank_math_title": seo_title,
+        "rank_math_description": meta_description,
+        "rank_math_focus_keyword": focus_kw,
+    }
+
+
 def create_post(article, featured_image_path=None, status=None):
     """
     Create a WordPress post from an article dict.
@@ -134,6 +151,8 @@ def create_post(article, featured_image_path=None, status=None):
         if tag_id:
             tag_ids.append(tag_id)
 
+    rankmath_meta = _get_rankmath_payload(article)
+
     post_data = {
         "title": article.get("title", "Untitled"),
         "content": article.get("full_content", article.get("content", "")),
@@ -149,9 +168,9 @@ def create_post(article, featured_image_path=None, status=None):
         post_data["featured_media"] = media_id
 
     article_lang = article.get("lang", "")
+    post_data.setdefault("meta", {})
+    post_data["meta"].update(rankmath_meta)
     if article_lang:
-        if "meta" not in post_data:
-            post_data["meta"] = {}
         post_data["meta"]["_kisan_lang"] = article_lang
         logger.info(f"  Language tag: {article_lang}")
 
@@ -247,6 +266,7 @@ def _publish_via_webhook(article, featured_image_path=None, status=None):
     if not url or not secret:
         return None
 
+    rankmath_meta = _get_rankmath_payload(article)
     payload = {
         "title": article.get("title", "Untitled"),
         "content": article.get("full_content", article.get("content", "")),
@@ -255,9 +275,9 @@ def _publish_via_webhook(article, featured_image_path=None, status=None):
         "status": status or config.WP_DEFAULT_STATUS,
         "tags": article.get("tags", []),
         "category": article.get("category", config.WP_DEFAULT_CATEGORY),
-        "rank_math_title": article.get("seo_title", article.get("title", "")),
-        "rank_math_description": article.get("meta_description", ""),
-        "rank_math_focus_keyword": article.get("matched_keyword", "") or article.get("focus_keyword", "") or (article.get("tags") or [""])[0] or article.get("title", ""),
+        "rank_math_title": rankmath_meta["rank_math_title"],
+        "rank_math_description": rankmath_meta["rank_math_description"],
+        "rank_math_focus_keyword": rankmath_meta["rank_math_focus_keyword"],
         "faq_schema": article.get("faq_schema", ""),
         "lang": article.get("lang", ""),
     }
@@ -281,6 +301,14 @@ def _publish_via_webhook(article, featured_image_path=None, status=None):
                 data = _safe_json(response)
                 if data and data.get("success"):
                     logger.info(f"  Post created via webhook (ID: {data.get('post_id')}, URL: {data.get('post_url', '')})")
+                    seo_meta = data.get("seo_meta") or {}
+                    if seo_meta:
+                        logger.info(
+                            "  RankMath meta stored via webhook "
+                            f"(title={bool(seo_meta.get('rank_math_title'))}, "
+                            f"description={bool(seo_meta.get('rank_math_description'))}, "
+                            f"focus={bool(seo_meta.get('rank_math_focus_keyword'))})"
+                        )
                     return {
                         "post_id": data.get("post_id"),
                         "post_url": data.get("post_url", ""),
@@ -478,17 +506,12 @@ def _set_rankmath_meta(post_id, article):
         logger.warning("  Skipping RankMath update because post_id is missing.")
         return
 
-    focus_kw = article.get("matched_keyword", "") or article.get("focus_keyword", "")
-    if not focus_kw and article.get("tags"):
-        focus_kw = article["tags"][0]
-    if not focus_kw:
-        focus_kw = article.get("title", "")
+    meta_values = _get_rankmath_payload(article)
+    focus_kw = meta_values["rank_math_focus_keyword"]
 
     rankmath_meta = {
         "meta": {
-            "rank_math_title": article.get("seo_title", article.get("title", "")),
-            "rank_math_description": article.get("meta_description", ""),
-            "rank_math_focus_keyword": focus_kw,
+            **meta_values,
             "rank_math_robots": ["index", "follow"],
         }
     }
@@ -511,10 +534,12 @@ def _set_rankmath_meta(post_id, article):
         if response.status_code == 200:
             logger.info(f"  RankMath SEO metadata set (focus: '{focus_kw}')")
         else:
+            body_preview = response.text[:300] if response.text else "empty response body"
             logger.warning(
                 f"  RankMath meta update returned HTTP {response.status_code}. "
                 "Add deploy/rankmath-rest-snippet.php to your theme's functions.php so meta is writable via REST."
             )
+            logger.warning(f"     Response: {body_preview}")
     except Exception as e:
         logger.warning(f"  RankMath meta update failed: {e}")
 

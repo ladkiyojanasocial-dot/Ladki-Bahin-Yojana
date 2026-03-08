@@ -190,7 +190,7 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
 
         # â”€â”€ 1. TITLE â”€â”€ (enforce max 60 chars for SEO)
         MAX_TITLE_LEN = 60
-        title_match = re.search(r'(?:1\.|TITLE:)\s*(.+?)(?:\n|2\.|META_DESCRIPTION:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
+        title_match = re.search(r'(?:1\.|TITLE:)\s*(.+?)(?:\n|2\.|SEO_TITLE:|3\.|META_DESCRIPTION:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
         if title_match:
             result["title"] = clean_meta(title_match.group(1))
         else:
@@ -199,57 +199,61 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
         if len(result["title"]) > MAX_TITLE_LEN:
             result["title"] = result["title"][:MAX_TITLE_LEN].rsplit(" ", 1)[0] or result["title"][:MAX_TITLE_LEN]
 
-        # â”€â”€ 2. META_DESCRIPTION â”€â”€ (attractive for search; 140â€“155 chars ideal)
-        meta_match = re.search(r'(?:2\.|META_DESCRIPTION:)\s*(.+?)(?:\n|3\.|SLUG:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
+        # Rank Math meta title; defaults to the article title if the model omits it.
+        seo_title_match = re.search(r'(?:2\.|SEO_TITLE:)\s*(.+?)(?:\n|3\.|META_DESCRIPTION:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
+        if seo_title_match:
+            result["seo_title"] = clean_meta(seo_title_match.group(1))
+        else:
+            result["seo_title"] = result["title"]
+        if len(result["seo_title"]) > MAX_TITLE_LEN:
+            result["seo_title"] = result["seo_title"][:MAX_TITLE_LEN].rsplit(" ", 1)[0] or result["seo_title"][:MAX_TITLE_LEN]
+
+        # Meta description extracted after the explicit SEO title field.
+        meta_match = re.search(r'(?:3\.|META_DESCRIPTION:)\s*(.+?)(?:\n|4\.|SLUG:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
         if meta_match:
             result["meta_description"] = clean_meta(meta_match.group(1))
         else:
             lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
-            if len(lines) > 1 and len(lines[1]) > 50:
+            if len(lines) > 2 and len(lines[2]) > 50:
+                result["meta_description"] = clean_meta(lines[2])
+            elif len(lines) > 1 and len(lines[1]) > 50:
                 result["meta_description"] = clean_meta(lines[1])
             else:
                 result["meta_description"] = result["title"][:155]
 
-        # â”€â”€ 3. SLUG â”€â”€ (short, max 50 chars, lowercase-kebab)
         MAX_SLUG_LEN = 50
-        slug_match = re.search(r'(?:3\.|SLUG:)\s*([a-z0-9-]+)', raw_text, re.IGNORECASE)
+        slug_match = re.search(r'(?:4\.|SLUG:)\s*([a-z0-9-]+)', raw_text, re.IGNORECASE)
         if slug_match:
             result["slug"] = re.sub(r'-+', '-', clean_meta(slug_match.group(1).lower()).strip('-'))
         else:
             result["slug"] = re.sub(r'[^a-z0-9]+', '-', result["title"].lower()).strip('-')
         result["slug"] = result["slug"][:MAX_SLUG_LEN].rstrip('-')
 
-        # â”€â”€ 4. TAGS â”€â”€
-        tags_match = re.search(r'(?:4\.|TAGS:)\s*(.+?)(?:\n|5\.|CATEGORY:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
+        tags_match = re.search(r'(?:5\.|TAGS:)\s*(.+?)(?:\n|6\.|CATEGORY:|---|$)', raw_text, re.IGNORECASE | re.DOTALL)
         if tags_match:
             result["tags"] = [clean_meta(t) for t in tags_match.group(1).split(",") if t.strip()]
         else:
             result["tags"] = ["women welfare", "india"]
 
-        # â”€â”€ 5. CATEGORY â”€â”€
-        category_match = re.search(r'(?:5\.|CATEGORY:)\s*([a-z0-9-]+)', raw_text, re.IGNORECASE)
+        category_match = re.search(r'(?:6\.|CATEGORY:)\s*([a-z0-9-]+)', raw_text, re.IGNORECASE)
         result["category"] = clean_meta(category_match.group(1).lower()) if category_match else "news"
-        # Use provided keyword or title as fallback to avoid NameError if local lookup fails
         final_kw = matched_keyword if matched_keyword else clean_meta(topic_title)
         result["matched_keyword"] = final_kw
+        result["focus_keyword"] = final_kw
 
-        # â”€â”€ 6. LANG â”€â”€
-        lang_match = re.search(r'(?:6\.|LANG:)\s*([a-z]{2})', raw_text, re.IGNORECASE)
+        lang_match = re.search(r'(?:7\.|LANG:)\s*([a-z]{2})', raw_text, re.IGNORECASE)
         result["lang"] = clean_meta(lang_match.group(1).lower()) if lang_match else "en"
 
-        # â”€â”€ 7. CONTENT â”€â”€
         content_block_match = re.search(r'---CONTENT_START---(.*?)---CONTENT_END---', raw_text, re.DOTALL)
         if content_block_match:
             result["content"] = content_block_match.group(1).strip()
         else:
-            # Fuzzy: look for anything after the LANG/6 line or marked 7.
-            fuzzy_parts = re.split(r'(?:7\.|---CONTENT_START---).*?\n', raw_text, maxsplit=1, flags=re.IGNORECASE | re.DOTALL)
+            fuzzy_parts = re.split(r'(?:8\.|---CONTENT_START---).*?\n', raw_text, maxsplit=1, flags=re.IGNORECASE | re.DOTALL)
             if len(fuzzy_parts) > 1:
                 result["content"] = fuzzy_parts[1].split("---CONTENT_END---")[0].strip()
             else:
-                # Absolute fallback: Everything after the first 6 lines (skip TITLE/META/SLUG/TAGS/CATEGORY/LANG)
                 lines = raw_text.split("\n")
-                result["content"] = "\n".join(lines[6:]).strip() if len(lines) > 6 else raw_text
+                result["content"] = "\n".join(lines[7:]).strip() if len(lines) > 7 else raw_text
         if not result["content"]:
             result["content"] = raw_text
 
@@ -260,6 +264,8 @@ def _parse_article_output(raw_text, matched_keyword="", topic_title=""):
             if first:
                 md = (md + " " + first).strip()[:155]
         result["meta_description"] = md or result["title"][:155]
+        if not result.get("seo_title"):
+            result["seo_title"] = result["title"]
 
         # â”€â”€ 7. FAQ â”€â”€ Extract FAQPage schema; keep only if it has real questions (not placeholders)
         result["faq_html"] = ""

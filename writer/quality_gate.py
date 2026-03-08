@@ -45,9 +45,17 @@ def validate_article_for_publish(article, min_words=700):
         issues.append(f"Article is thin ({len(words)} words); needs at least {min_words} words")
 
     base_url = re.escape(config.WP_URL.rstrip("/"))
-    internal_links = len(re.findall(rf'<a\s+[^>]*href="{base_url}/', full_content, flags=re.IGNORECASE))
+    all_links = re.findall(r'<a\s+[^>]*href="([^"]+)"', full_content, flags=re.IGNORECASE)
+    internal_links = sum(1 for href in all_links if re.match(rf"{base_url}/", href, flags=re.IGNORECASE))
+    outbound_links = sum(1 for href in all_links if href.lower().startswith("http") and not re.match(rf"{base_url}/", href, flags=re.IGNORECASE))
+    official_outbound_links = sum(1 for href in all_links if any(token in href.lower() for token in ("gov.in", ".gov", "nic.in", "india.gov.in")))
+
     if internal_links < 2:
         issues.append("Internal linking is weak (needs at least 2 internal links)")
+    if outbound_links < 1:
+        issues.append("Outbound linking is missing (needs at least 1 external source link)")
+    if official_outbound_links < 1:
+        warnings.append("No official government outbound link found; add one when available")
 
     h2_count = len(re.findall(r"<h2\b", full_content, flags=re.IGNORECASE))
     if h2_count < 2:
@@ -80,6 +88,8 @@ def validate_article_for_publish(article, min_words=700):
         "warnings": warnings,
         "word_count": len(words),
         "internal_links": internal_links,
+        "outbound_links": outbound_links,
+        "official_outbound_links": official_outbound_links,
         "h2_count": h2_count,
         "focus_keyword": focus_keyword,
     }

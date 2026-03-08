@@ -4,6 +4,7 @@ Enforces SEO best practices, your site's editorial style, Kadence block HTML, an
 """
 import os
 import json
+from urllib.parse import urlparse
 from detection.scheme_registry import get_category_slug_for_text
 
 SCHEME_CATEGORY_SLUGS = [
@@ -115,6 +116,37 @@ def get_internal_links_for_prompt():
         return combined + INTERNAL_LINKS_PILLARS
     except Exception:
         return list(INTERNAL_LINKS_PILLARS)
+
+
+def _is_preferred_official_url(url):
+    try:
+        host = (urlparse(url).netloc or "").lower()
+    except Exception:
+        return False
+    return any(token in host for token in ("gov.in", ".gov", "nic.in", "india.gov.in"))
+
+
+def get_outbound_links_for_prompt(source_texts):
+    preferred = []
+    other = []
+    seen = set()
+    for src in source_texts[:8]:
+        url = (src.get("url") or "").strip()
+        if not url.startswith("http"):
+            continue
+        if BASE_URL and BASE_URL.rstrip("/") in url.rstrip("/"):
+            continue
+        if url in seen:
+            continue
+        seen.add(url)
+        domain = (src.get("source_domain") or urlparse(url).netloc or "Official source").strip()
+        row = {"url": url, "label": domain}
+        if _is_preferred_official_url(url):
+            preferred.append(row)
+        else:
+            other.append(row)
+    combined = preferred + other
+    return combined[:5]
 
 
 def add_published_post(post_url, title, slug="", published_at=""):
@@ -255,6 +287,7 @@ def build_article_prompt(topic_title, source_texts, matched_keyword="", target_l
     for i, src in enumerate(source_texts[:5], 1):
         sources_block += f"""
 --- SOURCE {i} ({src.get('source_domain', 'Unknown')}) ---
+URL: {src.get('url', '')}
 {src.get('text', '')[:2000]}
 """
 
@@ -264,6 +297,15 @@ def build_article_prompt(topic_title, source_texts, matched_keyword="", target_l
         links_context += f"  - Title: {p['topic']}\n"
         links_context += f"    - EXACT URL TO USE: {p['url']}\n"
         links_context += f"    - Allowed Anchors: {', '.join(p['anchors'])}\n"
+
+    outbound_links = get_outbound_links_for_prompt(source_texts)
+    outbound_context = "ALLOWED OUTBOUND LINKS:\n"
+    if outbound_links:
+        for row in outbound_links:
+            flag = "Preferred official source" if _is_preferred_official_url(row["url"]) else "Authoritative source"
+            outbound_context += f"  - {flag}: {row['url']} ({row['label']})\n"
+    else:
+        outbound_context += "  - No outbound source URLs available from source material.\n"
 
     cat_mapping_str = ", ".join(CATEGORY_MAPPING)
     primary_keyword = (matched_keyword or topic_title).strip()
@@ -298,13 +340,21 @@ SEO / AEO / GEO STRATEGY
 - Format: <a href="EXACT_URL_FROM_LIST">anchor text</a>.
 - {links_context}
 
-2. LANGUAGE REQUIREMENT
+2. OUTBOUND LINKING (STRICT)
+- You MUST include at least 1 outbound link inside the body text.
+- Prefer a government or official portal URL from the allowed outbound list below.
+- If no official government URL is available in the list, use one authoritative source URL from the same list.
+- Never invent, guess, or modify an outbound URL.
+- Format: <a href="EXACT_ALLOWED_OUTBOUND_URL">anchor text</a>.
+- {outbound_context}
+
+3. LANGUAGE REQUIREMENT
 - The full article content must be in TARGET LANGUAGE only: {lang_labels[target_lang]} ({target_lang}).
 - Do not mix languages except official scheme names.
 - Set LANG field exactly to: {target_lang}.
 - {language_rules}
 
-3. SEO REQUIREMENTS
+4. SEO REQUIREMENTS
 - PRIMARY KEYWORD / FOCUS KEYWORD is: "{primary_keyword}".
 - The TITLE must contain the PRIMARY KEYWORD exactly or the closest exact scheme phrase.
 - The META_DESCRIPTION must contain the PRIMARY KEYWORD naturally and include a strong click hook such as latest update, status, installment, last date, amount, eligibility, apply process, documents, or payment update.
@@ -313,7 +363,7 @@ SEO / AEO / GEO STRATEGY
 - Use the PRIMARY KEYWORD naturally in at least one H2 and in the closing guidance.
 - Keep the article tightly focused on the PRIMARY KEYWORD. Do not drift into generic commentary.
 
-4. AEO / GEO REQUIREMENTS
+5. AEO / GEO REQUIREMENTS
 - Answer the main search query early, clearly, and directly in 2 to 4 sentences near the top.
 - Write in a way that can be quoted by AI overviews and answer engines: clear facts, clean phrasing, and no fluff.
 - Add question-based subheadings where useful, such as eligibility, status check, installment date, eKYC, documents, amount, or how to apply.
@@ -322,38 +372,41 @@ SEO / AEO / GEO STRATEGY
 - The article structure must match the selected content template.
 - {template_rules}
 
-5. DO NOT DO THIS
+6. DO NOT DO THIS
 - Do not mention Google Trends, search volume, spike score, or keyword metrics.
 - Do not write filler introductions.
 - Do not write generic motivational text.
 - Do not invent facts beyond the source material.
 - Do not stuff keywords unnaturally.
 
-6. HTML FORMATTING
+7. HTML FORMATTING
 - Use ## for H2 headers and ### for H3 headers.
 - Use * for bulleted lists.
 - Bold important scheme terms using **term**.
 
 ARTICLE STRUCTURE
 CRITICAL: TITLE is the article H1 and must be a real search-friendly headline.
+CRITICAL: SEO_TITLE should be a search-optimized meta title and can differ slightly from the H1 if it improves CTR.
 CRITICAL: META_DESCRIPTION should be attractive, factual, and click-worthy.
 CRITICAL: The intro must say what changed, who is affected, and what action the reader should take.
 CRITICAL: The article must feel helpful for search users first, then strong enough for AI summaries.
+CRITICAL: Include at least 1 outbound source link and 2 to 3 internal links in the final article body.
 
 1. TITLE: Maximum 60 characters. Must contain the PRIMARY KEYWORD. No markdown or quotes.
-2. META_DESCRIPTION: 140 to 155 characters. Must contain the PRIMARY KEYWORD naturally and a strong hook.
-3. SLUG: 3 to 6 words, lowercase, hyphens only, max 50 chars.
-4. TAGS: Exactly 5 tags, comma-separated.
-5. CATEGORY: ONE slug from: {cat_mapping_str}. Use "news" only if topic does not match a scheme.
-6. LANG: The 2-letter ISO language code of this article's text. Use exactly {target_lang}.
-7. ---CONTENT_START---
+2. SEO_TITLE: Maximum 60 characters. Must contain the PRIMARY KEYWORD naturally. This is the Rank Math meta title.
+3. META_DESCRIPTION: 140 to 155 characters. Must contain the PRIMARY KEYWORD naturally and a strong hook.
+4. SLUG: 3 to 6 words, lowercase, hyphens only, max 50 chars.
+5. TAGS: Exactly 5 tags, comma-separated.
+6. CATEGORY: ONE slug from: {cat_mapping_str}. Use "news" only if topic does not match a scheme.
+7. LANG: The 2-letter ISO language code of this article's text. Use exactly {target_lang}.
+8. ---CONTENT_START---
 - Start with a short direct-answer intro of 2 to 4 sentences.
 - Follow with well-structured H2/H3 sections that match the selected template.
 - Add at least 2 bullet lists where useful.
 - Include a short FAQ section at the end with 4 to 6 real questions beneficiaries may ask.
 - Keep the tone practical, trustworthy, and easy to understand.
-8. ---CONTENT_END---
-9. ---FAQ_START---
+9. ---CONTENT_END---
+10. ---FAQ_START---
 REQUIRED: Output FAQPage JSON-LD schema with 3 to 4 real questions and real answers.
 <script type="application/ld+json">
 {{
@@ -366,10 +419,11 @@ REQUIRED: Output FAQPage JSON-LD schema with 3 to 4 real questions and real answ
   ]
 }}
 </script>
-10. ---FAQ_END---
+11. ---FAQ_END---
 
 Return ONLY this exact structure:
 TITLE: ...
+SEO_TITLE: ...
 META_DESCRIPTION: ...
 SLUG: ...
 TAGS: tag1, tag2, tag3, tag4, tag5
@@ -393,4 +447,3 @@ Style: High-quality stock photo, documentary style, no visible text overlays.
 Rules: No text, no logos, no watermarks, no cartoons. Landscape orientation, 16:9 suitable for featured image."""
 
     return prompt
-
