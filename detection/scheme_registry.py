@@ -30,7 +30,7 @@ SCHEME_REGISTRY = [
     {"id": "pmmvy", "name": "Pradhan Mantri Matru Vandana Yojana", "level": "central", "state": "", "priority": 8,
      "category_slug": "pradhan-mantri-matru-vandana-yojana", "aliases": ["pmmvy", "matru vandana"]},
     {"id": "ujjwala", "name": "Ujjwala Yojana", "level": "central", "state": "", "priority": 7,
-     "category_slug": "ujjwala-yojana", "aliases": ["pmuy", "pradhan mantri ujjwala yojana"]},
+     "category_slug": "ujjwala-yojana", "aliases": ["pmuy", "pradhan mantri ujjwala yojana"], "authority_url": "https://www.pmuy.gov.in/"},
     {"id": "mssc", "name": "Mahila Samman Savings Certificate", "level": "central", "state": "", "priority": 7,
      "category_slug": "mahila-samman-savings-certificate", "aliases": ["mssc", "mahila samman certificate"]},
     {"id": "step", "name": "STEP Scheme", "level": "central", "state": "", "priority": 7,
@@ -144,3 +144,10 @@ def build_angle_topic(scheme, angle, year=None):
     year = year or datetime.utcnow().year
     tmpl = ANGLE_TOPIC_TEMPLATES.get(angle, ANGLE_TOPIC_TEMPLATES["latest_news"])
     return tmpl.format(name=scheme["name"], year=year)
+
+
+def get_authority_url_for_text(topic_title, matched_keyword=""):
+    scheme = find_best_scheme(f"{topic_title or ''} {matched_keyword or ''}")
+    if scheme and scheme.get("authority_url"):
+        return scheme["authority_url"]
+    return "https://www.myscheme.gov.in/"

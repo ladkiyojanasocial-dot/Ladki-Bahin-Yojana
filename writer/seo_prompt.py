@@ -5,7 +5,7 @@ Enforces SEO best practices, your site's editorial style, Kadence block HTML, an
 import os
 import json
 from urllib.parse import urlparse
-from detection.scheme_registry import get_category_slug_for_text
+from detection.scheme_registry import get_category_slug_for_text, get_authority_url_for_text
 
 SCHEME_CATEGORY_SLUGS = [
     "ladli-behna-yojana", "majhi-ladki-bahin-yojana", "subhadra-yojana",
@@ -60,24 +60,6 @@ def get_category_for_topic(topic_title, matched_keyword=""):
 
 BASE_URL = os.getenv("WP_URL", "https://womenempowermentportal.org").rstrip("/")
 
-INTERNAL_LINKS_PILLARS = [
-    {"url": f"{BASE_URL}/ladli-behna-yojana/", "topic": "Ladli Behna Yojana", "anchors": ["Ladli Behna Yojana", "Ladli Behna status", "Ladli Behna eligibility"]},
-    {"url": f"{BASE_URL}/majhi-ladki-bahin-yojana/", "topic": "Majhi Ladki Bahin Yojana", "anchors": ["Majhi Ladki Bahin Yojana", "Ladki Bahin scheme", "Majhi Ladki Bahin status"]},
-    {"url": f"{BASE_URL}/subhadra-yojana/", "topic": "Subhadra Yojana", "anchors": ["Subhadra Yojana", "Subhadra status check", "Odisha women scheme"]},
-    {"url": f"{BASE_URL}/gruha-lakshmi-yojana/", "topic": "Gruha Lakshmi Yojana", "anchors": ["Gruha Lakshmi Yojana", "Gruha Lakshmi payment", "Karnataka women scheme"]},
-    {"url": f"{BASE_URL}/mahtari-vandan-yojana/", "topic": "Mahtari Vandan Yojana", "anchors": ["Mahtari Vandan Yojana", "Mahtari Vandan status", "women benefit scheme"]},
-    {"url": f"{BASE_URL}/kanyashree-prakalpa/", "topic": "Kanyashree Prakalpa", "anchors": ["Kanyashree Prakalpa", "Kanyashree scholarship", "girls scheme"]},
-    {"url": f"{BASE_URL}/sukanya-samriddhi-yojana/", "topic": "Sukanya Samriddhi Yojana", "anchors": ["Sukanya Samriddhi Yojana", "SSY account", "girl child savings scheme"]},
-    {"url": f"{BASE_URL}/pradhan-mantri-matru-vandana-yojana/", "topic": "PMMVY", "anchors": ["PMMVY", "Matru Vandana Yojana", "maternity benefit scheme"]},
-    {"url": f"{BASE_URL}/beti-bachao-beti-padhao/", "topic": "Beti Bachao Beti Padhao", "anchors": ["Beti Bachao Beti Padhao", "BBBP", "girl child empowerment"]},
-    {"url": f"{BASE_URL}/mahila-samman-savings-certificate/", "topic": "Mahila Samman Savings Certificate", "anchors": ["Mahila Samman Savings Certificate", "MSSC", "women savings scheme"]},
-]
-
-INTERNAL_LINKS = {
-    "pillars": INTERNAL_LINKS_PILLARS,
-    "home": {"url": f"{BASE_URL}/", "anchor": "Women Welfare Portal Home"},
-}
-
 PUBLISHED_POSTS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "published_posts.json")
 
 
@@ -105,17 +87,48 @@ def _load_published_posts():
 
 def get_internal_links_for_prompt():
     try:
-        static_urls = {p.get("url", "").rstrip("/") for p in INTERNAL_LINKS_PILLARS if p.get("url")}
-        published = _load_published_posts()
-        combined = []
-        for p in published:
-            u = (p.get("url") or "").rstrip("/")
-            if u and u not in static_urls:
-                combined.append(p)
-                static_urls.add(u)
-        return combined + INTERNAL_LINKS_PILLARS
+        from publisher.wordpress_client import get_site_keyword_inventory
+        inventory = get_site_keyword_inventory()
+        posts = inventory.get("posts", []) if isinstance(inventory, dict) else []
+        live_links = []
+        seen = set()
+        for post in posts:
+            url = (post.get("url") or "").strip()
+            if not url.startswith("http"):
+                continue
+            if BASE_URL and not url.startswith(BASE_URL.rstrip("/")):
+                continue
+            key = url.rstrip("/")
+            if key in seen:
+                continue
+            seen.add(key)
+            title = (post.get("title") or "").strip() or "Article"
+            slug = (post.get("slug") or "").strip()
+            anchors = [title]
+            if slug:
+                anchors.append(slug.replace("-", " "))
+            live_links.append({"url": key + "/", "topic": title, "anchors": anchors})
+        if live_links:
+            return live_links[:20]
     except Exception:
-        return list(INTERNAL_LINKS_PILLARS)
+        pass
+    return _load_published_posts()
+
+
+def _build_internal_link_instructions(internal_links):
+    if len(internal_links) >= 2:
+        return "- You MUST include exactly 2 to 3 internal links inside the body text."
+    if len(internal_links) == 1:
+        return "- You MUST include exactly 1 internal link inside the body text."
+    return "- Do not add any internal links unless a live published URL is listed below."
+
+
+def _build_internal_link_critical_note(internal_links):
+    if len(internal_links) >= 2:
+        return "CRITICAL: Include at least 2 internal links in the final article body, and use only live published URLs from the list."
+    if len(internal_links) == 1:
+        return "CRITICAL: Include the single live internal link listed below if it is relevant."
+    return "CRITICAL: Do not invent internal links. If no live internal URL is listed, leave internal links out."
 
 
 def _is_preferred_official_url(url):
@@ -126,9 +139,8 @@ def _is_preferred_official_url(url):
     return any(token in host for token in ("gov.in", ".gov", "nic.in", "india.gov.in"))
 
 
-def get_outbound_links_for_prompt(source_texts):
+def get_outbound_links_for_prompt(source_texts, topic_title="", matched_keyword=""):
     preferred = []
-    other = []
     seen = set()
     for src in source_texts[:8]:
         url = (src.get("url") or "").strip()
@@ -138,15 +150,19 @@ def get_outbound_links_for_prompt(source_texts):
             continue
         if url in seen:
             continue
+        if not _is_preferred_official_url(url):
+            continue
         seen.add(url)
         domain = (src.get("source_domain") or urlparse(url).netloc or "Official source").strip()
-        row = {"url": url, "label": domain}
-        if _is_preferred_official_url(url):
-            preferred.append(row)
-        else:
-            other.append(row)
-    combined = preferred + other
-    return combined[:5]
+        preferred.append({"url": url, "label": domain})
+
+    if preferred:
+        return preferred[:5]
+
+    authority_url = get_authority_url_for_text(topic_title, matched_keyword)
+    if authority_url:
+        return [{"url": authority_url, "label": "Government authority"}]
+    return []
 
 
 def add_published_post(post_url, title, slug="", published_at="", focus_keyword=""):
@@ -299,13 +315,18 @@ URL: {src.get('url', '')}
 """
 
     pillars_for_prompt = get_internal_links_for_prompt()
+    internal_link_rule = _build_internal_link_instructions(pillars_for_prompt)
+    internal_link_critical = _build_internal_link_critical_note(pillars_for_prompt)
     links_context = "ALLOWED INTERNAL LINKS:\n"
-    for p in pillars_for_prompt:
-        links_context += f"  - Title: {p['topic']}\n"
-        links_context += f"    - EXACT URL TO USE: {p['url']}\n"
-        links_context += f"    - Allowed Anchors: {', '.join(p['anchors'])}\n"
+    if pillars_for_prompt:
+        for p in pillars_for_prompt:
+            links_context += f"  - Title: {p['topic']}\n"
+            links_context += f"    - EXACT URL TO USE: {p['url']}\n"
+            links_context += f"    - Allowed Anchors: {', '.join(p['anchors'])}\n"
+    else:
+        links_context += "  - No live published internal URLs available right now.\n"
 
-    outbound_links = get_outbound_links_for_prompt(source_texts)
+    outbound_links = get_outbound_links_for_prompt(source_texts, topic_title=topic_title, matched_keyword=matched_keyword)
     outbound_context = "ALLOWED OUTBOUND LINKS:\n"
     if outbound_links:
         for row in outbound_links:
@@ -341,7 +362,7 @@ SOURCE MATERIAL
 SEO / AEO / GEO STRATEGY
 
 1. INTERNAL LINKING (STRICT)
-- You MUST include exactly 2 to 3 internal links inside the body text.
+{internal_link_rule}
 - Use ONLY the exact URLs from the allowed internal links list below.
 - Never invent, guess, or modify a URL.
 - Format: <a href="EXACT_URL_FROM_LIST">anchor text</a>.
@@ -349,8 +370,8 @@ SEO / AEO / GEO STRATEGY
 
 2. OUTBOUND LINKING (STRICT)
 - You MUST include at least 1 outbound link inside the body text.
-- Prefer a government or official portal URL from the allowed outbound list below.
-- If no official government URL is available in the list, use one authoritative source URL from the same list.
+- You MUST use a government or official portal URL from the allowed outbound list below.
+- If the source material does not include one, use the government authority URL provided below.
 - Never invent, guess, or modify an outbound URL.
 - Format: <a href="EXACT_ALLOWED_OUTBOUND_URL">anchor text</a>.
 - {outbound_context}
@@ -397,7 +418,8 @@ CRITICAL: SEO_TITLE should be a search-optimized meta title and can differ sligh
 CRITICAL: META_DESCRIPTION should be attractive, factual, and click-worthy.
 CRITICAL: The intro must say what changed, who is affected, and what action the reader should take.
 CRITICAL: The article must feel helpful for search users first, then strong enough for AI summaries.
-CRITICAL: Include at least 1 outbound source link and 2 to 3 internal links in the final article body.
+{internal_link_critical}
+CRITICAL: Include at least 1 government outbound source link in the final article body.
 
 1. TITLE: Maximum 60 characters. Must contain the PRIMARY KEYWORD. No markdown or quotes.
 2. SEO_TITLE: Maximum 60 characters. Must contain the PRIMARY KEYWORD naturally. This is the Rank Math meta title.

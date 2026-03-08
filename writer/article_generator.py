@@ -102,7 +102,7 @@ def _ensure_outbound_source_link(article, source_texts):
     if re.search(r'<a\s+[^>]*href="https?://', full_content, flags=re.IGNORECASE):
         return article
 
-    outbound_links = get_outbound_links_for_prompt(source_texts)
+    outbound_links = get_outbound_links_for_prompt(source_texts, topic.get("topic", ""), topic.get("matched_keyword", ""))
     if not outbound_links:
         return article
 
@@ -225,7 +225,7 @@ def generate_article(topic, source_urls=None):
         article["lang"] = target_lang if target_lang in ("en", "hi", "te") else article.get("lang", "en")
         article = _ensure_outbound_source_link(article, source_texts)
         article["word_count"] = len((article.get("content_html") or article.get("full_content") or "").split())
-        logger.info(f"  ??? Article generated: '{article['title']}' (category: {article['category']})")
+        logger.info(f"  Article generated: '{article['title']}' (category: {article['category']})")
     else:
         logger.error("  âŒ Failed to parse Gemini output. Check that the model returns TITLE, CONTENT_START/END, etc.")
         logger.debug(f"  Raw output preview: {raw_output[:400]}...")

@@ -3,6 +3,7 @@ Quality gate checks before publishing articles.
 """
 import re
 import config
+from writer.seo_prompt import get_internal_links_for_prompt
 
 
 def _normalize_text(value):
@@ -52,8 +53,12 @@ def validate_article_for_publish(article, min_words=700):
     outbound_links = sum(1 for href in all_links if href.lower().startswith("http") and not re.match(rf"{base_url}/", href, flags=re.IGNORECASE))
     official_outbound_links = sum(1 for href in all_links if any(token in href.lower() for token in ("gov.in", ".gov", "nic.in", "india.gov.in")))
 
-    if internal_links < 2:
-        issues.append("Internal linking is weak (needs at least 2 internal links)")
+    available_internal_targets = len(get_internal_links_for_prompt())
+
+    if available_internal_targets >= 2 and internal_links < 2:
+        issues.append("Internal linking is weak (needs at least 2 live internal links)")
+    elif available_internal_targets == 1 and internal_links < 1:
+        warnings.append("Add the available live internal link if relevant")
     if category in ("", "uncategorized"):
         issues.append("Article category is missing or Uncategorized")
     if len(tags) < 3:
@@ -61,7 +66,7 @@ def validate_article_for_publish(article, min_words=700):
     if outbound_links < 1:
         issues.append("Outbound linking is missing (needs at least 1 external source link)")
     if official_outbound_links < 1:
-        warnings.append("No official government outbound link found; add one when available")
+        issues.append("Government outbound link is missing (needs at least 1 official source link)")
 
     h2_count = len(re.findall(r"<h2\b", full_content, flags=re.IGNORECASE))
     if h2_count < 2:

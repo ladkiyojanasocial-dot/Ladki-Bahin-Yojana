@@ -132,7 +132,7 @@ def _normalize_keywordish(value):
 
 
 def _build_local_inventory():
-    inventory = {"keywords": set(), "titles": set(), "slugs": set(), "posts": []}
+    inventory = {"keywords": set(), "titles": set(), "slugs": set(), "targets": set(), "posts": []}
     posts_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "published_posts.json")
     if not os.path.exists(posts_file):
         return inventory
@@ -148,11 +148,15 @@ def _build_local_inventory():
         focus_keyword = _normalize_keywordish(row.get("focus_keyword", ""))
         if title:
             inventory["titles"].add(title)
+            inventory["targets"].add(title)
         if slug:
             inventory["slugs"].add(slug)
+            inventory["targets"].add(slug)
         if focus_keyword:
             inventory["keywords"].add(focus_keyword)
+            inventory["targets"].add(focus_keyword)
         inventory["posts"].append({
+            "post_type": row.get("post_type", "post"),
             "title": row.get("title", ""),
             "slug": row.get("slug", ""),
             "focus_keyword": row.get("focus_keyword", ""),
@@ -180,6 +184,7 @@ def _write_site_keyword_cache(inventory):
         "keywords": sorted(inventory.get("keywords", set())),
         "titles": sorted(inventory.get("titles", set())),
         "slugs": sorted(inventory.get("slugs", set())),
+        "targets": sorted(inventory.get("targets", set())),
         "posts": inventory.get("posts", []),
     }
     try:
@@ -200,59 +205,85 @@ def get_site_keyword_inventory(force_refresh=False):
     if not config.WP_URL or not config.WP_USERNAME or not config.WP_APP_PASSWORD:
         return _write_site_keyword_cache(inventory)
 
-    page = 1
-    while page <= 20:
-        try:
-            response = requests.get(
-                f"{API_BASE}/posts",
-                params={
-                    "status": "publish",
-                    "context": "edit",
-                    "per_page": 100,
-                    "page": page,
-                    "_fields": "id,slug,title,link,meta",
-                },
-                auth=AUTH,
-                headers=HEADERS,
-                timeout=TIMEOUT,
-            )
-        except Exception as e:
-            logger.warning(f"  Could not refresh published keyword inventory from WordPress: {e}")
-            break
+    for endpoint in ("posts", "pages"):
+        page = 1
+        while page <= 20:
+            try:
+                response = requests.get(
+                    f"{API_BASE}/{endpoint}",
+                    params={
+                        "status": "publish",
+                        "context": "edit",
+                        "per_page": 100,
+                        "page": page,
+                        "_fields": "id,slug,title,link,meta",
+                    },
+                    auth=AUTH,
+                    headers=HEADERS,
+                    timeout=TIMEOUT,
+                )
+            except Exception as e:
+                logger.warning(f"  Could not refresh published keyword inventory from WordPress: {e}")
+                break
 
-        if response.status_code != 200:
-            logger.warning(f"  WordPress keyword inventory fetch returned HTTP {response.status_code}")
-            break
+            if response.status_code != 200:
+                logger.warning(f"  WordPress keyword inventory fetch returned HTTP {response.status_code}")
+                break
 
-        posts = _safe_json(response) or []
-        if not posts:
-            break
+            posts = _safe_json(response) or []
+            if not posts:
+                break
 
-        for post in posts:
-            meta = post.get("meta") if isinstance(post.get("meta"), dict) else {}
-            title_text = _normalize_keywordish((post.get("title") or {}).get("rendered", ""))
-            slug_text = _normalize_keywordish((post.get("slug") or "").replace("-", " "))
-            focus_keyword = _normalize_keywordish(meta.get("rank_math_focus_keyword", ""))
-            if title_text:
-                inventory["titles"].add(title_text)
-            if slug_text:
-                inventory["slugs"].add(slug_text)
-            if focus_keyword:
-                inventory["keywords"].add(focus_keyword)
-            inventory["posts"].append({
-                "id": post.get("id"),
-                "title": (post.get("title") or {}).get("rendered", ""),
-                "slug": post.get("slug", ""),
-                "focus_keyword": meta.get("rank_math_focus_keyword", ""),
-                "url": post.get("link", ""),
-            })
+            for post in posts:
+                meta = post.get("meta") if isinstance(post.get("meta"), dict) else {}
+                title_text = _normalize_keywordish((post.get("title") or {}).get("rendered", ""))
+                slug_text = _normalize_keywordish((post.get("slug") or "").replace("-", " "))
+                focus_keyword = _normalize_keywordish(meta.get("rank_math_focus_keyword", ""))
+                if title_text:
+                    inventory["titles"].add(title_text)
+                    inventory["targets"].add(title_text)
+                if slug_text:
+                    inventory["slugs"].add(slug_text)
+                    inventory["targets"].add(slug_text)
+                if focus_keyword:
+                    inventory["keywords"].add(focus_keyword)
+                    inventory["targets"].add(focus_keyword)
+                inventory["posts"].append({
+                    "id": post.get("id"),
+                    "post_type": endpoint[:-1],
+                    "title": (post.get("title") or {}).get("rendered", ""),
+                    "slug": post.get("slug", ""),
+                    "focus_keyword": meta.get("rank_math_focus_keyword", ""),
+                    "url": post.get("link", ""),
+                })
 
-        if len(posts) < 100:
-            break
-        page += 1
+            if len(posts) < 100:
+                break
+            page += 1
 
     return _write_site_keyword_cache(inventory)
 
+
+
+def find_existing_keyword_target(matched_keyword=""):
+    normalized_keyword = _normalize_keywordish(matched_keyword)
+    if not normalized_keyword:
+        return None
+
+    inventory = get_site_keyword_inventory()
+    for post in inventory.get("posts", []):
+        focus_keyword = _normalize_keywordish(post.get("focus_keyword", ""))
+        title = _normalize_keywordish(post.get("title", ""))
+        slug = _normalize_keywordish((post.get("slug", "") or "").replace("-", " "))
+        if normalized_keyword in {focus_keyword, title, slug}:
+            return {
+                "reason": "exact keyword",
+                "value": matched_keyword.strip(),
+                "post_type": post.get("post_type", "post"),
+                "title": post.get("title", ""),
+                "url": post.get("url", ""),
+            }
+    return None
 
 def find_published_topic_match(topic_title="", matched_keyword="", slug=""):
     inventory = get_site_keyword_inventory()
@@ -472,9 +503,11 @@ def _publish_via_webhook(article, featured_image_path=None, status=None):
                         )
                     if data.get("post_id"):
                         try:
+                            if not data.get("assigned_category_id") or not data.get("assigned_tag_ids"):
+                                _set_post_taxonomy(data.get("post_id"), article)
                             _set_rankmath_meta(data.get("post_id"), article)
                         except Exception as e:
-                            logger.debug(f"  RankMath REST sync after webhook failed: {e}")
+                            logger.debug(f"  RankMath/term REST sync after webhook failed: {e}")
                     return {
                         "post_id": data.get("post_id"),
                         "post_url": data.get("post_url", ""),
@@ -661,6 +694,43 @@ def get_or_create_tag(name):
         logger.error(f"  Tag error for '{name}': {e}")
 
     return None
+
+
+def _set_post_taxonomy(post_id, article):
+    if not _coerce_int(post_id):
+        return
+
+    category_id = get_or_create_category(article.get("category", config.WP_DEFAULT_CATEGORY))
+    tag_ids = []
+    for tag_name in article.get("tags", []):
+        tag_id = get_or_create_tag(tag_name)
+        if tag_id:
+            tag_ids.append(tag_id)
+
+    payload = {}
+    if category_id:
+        payload["categories"] = [category_id]
+    if tag_ids:
+        payload["tags"] = tag_ids
+    if not payload:
+        return
+
+    try:
+        response = requests.post(
+            f"{API_BASE}/posts/{post_id}",
+            json=payload,
+            auth=AUTH,
+            headers=HEADERS,
+            timeout=TIMEOUT,
+        )
+        if response.status_code == 200:
+            logger.info(
+                f"  Taxonomy synced via REST (category={payload.get('categories', [])}, tags={payload.get('tags', [])})"
+            )
+        else:
+            logger.warning(f"  Taxonomy sync returned HTTP {response.status_code}: {response.text[:200]}")
+    except Exception as e:
+        logger.warning(f"  Taxonomy sync failed: {e}")
 
 
 def _set_rankmath_meta(post_id, article):

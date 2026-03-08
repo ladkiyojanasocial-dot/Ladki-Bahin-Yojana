@@ -37,7 +37,7 @@ from notifications.telegram_bot import (
 )
 from database.db import get_connection, cleanup_old_data, mark_notified, record_notification, save_topic_to_cache, get_topic_from_cache, mark_content_generated, mark_content_published
 from writer.article_generator import generate_article
-from publisher.wordpress_client import create_post, find_published_topic_match
+from publisher.wordpress_client import create_post, find_published_topic_match, find_existing_keyword_target
 from publisher.image_handler import generate_featured_image
 from gemini_client import generate_content_with_fallback
 
@@ -275,18 +275,15 @@ def run_scan():
     duplicate_topics = []
     filtered_topics = []
     for topic in trending_topics:
-        published_match = find_published_topic_match(
-            topic_title=topic.get("topic", ""),
-            matched_keyword=topic.get("matched_keyword", ""),
-            slug=topic.get("slug", ""),
-        )
+        published_match = find_existing_keyword_target(topic.get("matched_keyword", ""))
         if published_match:
             duplicate_topics.append((topic, published_match))
             logger.info(
-                "   Skipping already-published topic '%s' because its %s already exists: %s",
+                "   Skipping topic '%s' because exact keyword '%s' already exists on a %s: %s",
                 topic.get("topic", "")[:80],
-                published_match.get("reason", "keyword"),
-                published_match.get("value", ""),
+                topic.get("matched_keyword", ""),
+                published_match.get("post_type", "post"),
+                published_match.get("title", ""),
             )
             continue
         filtered_topics.append(topic)
@@ -618,11 +615,7 @@ def _handle_write_article(topic_hash=None):
         send_simple_message("âš ï¸ No trending topics found in memory or database. Wait for the next scan.")
         return
 
-    published_match = find_published_topic_match(
-        topic_title=topic.get("topic", ""),
-        matched_keyword=topic.get("matched_keyword", ""),
-        slug=topic.get("slug", ""),
-    )
+    published_match = find_existing_keyword_target(topic.get("matched_keyword", ""))
     if published_match:
         send_simple_message(
             "Skipping this topic because its "
