@@ -15,7 +15,17 @@ load_dotenv(_PROJECT_ROOT / ".env")
 # API Keys
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+_newsapi_keys_list = []
+for env_name in ("NEWS_API_KEYS", "NEWS_API_KEY"):
+    val = os.getenv(env_name, "").strip()
+    if not val:
+        continue
+    for k in val.split(","):
+        k = k.strip()
+        if k and k not in _newsapi_keys_list:
+            _newsapi_keys_list.append(k)
+NEWS_API_KEYS = _newsapi_keys_list
+NEWS_API_KEY = NEWS_API_KEYS[0] if NEWS_API_KEYS else None
 
 # Collect all Gemini keys for rotation. Legacy single-key envs are still accepted if present.
 _gemini_keys_list = []
@@ -214,6 +224,3 @@ IMAGE_POLLINATIONS_TIMEOUT_SECONDS = max(10, int(os.getenv("IMAGE_POLLINATIONS_T
 # Logging
 LOG_FILE = "agent.log"
 LOG_LEVEL = "INFO"
-
-
-

@@ -77,7 +77,7 @@ def load_pending_state():
     global _pending_article, _pending_image_path, _update_offset
     try:
         if os.path.exists("pending_state.json"):
-            with open("pending_state.json", "r", encoding="utf-8") as f:
+            with open("pending_state.json", "r", encoding="utf-8-sig") as f:
                 state = json.load(f)
                 if state.get("state_version") != _state_version:
                     _pending_article = None
@@ -411,7 +411,10 @@ def check_and_handle_commands():
                             conn = get_connection()
                             topic = get_topic_from_cache(conn, topic_hash)
                             conn.close()
-                        except: pass
+                        except:
+                            pass
+                        if not topic and _latest_topics:
+                            topic = next((t for t in _latest_topics if (t.get("story_hash") or "") == topic_hash), None)
                     
                     if not topic and _latest_topics:
                         topic = _latest_topics[0]
@@ -537,9 +540,13 @@ def _handle_write_article(topic_hash=None):
             if topic:
                 logger.info(f"Loaded specific topic {topic_hash} from cache.")
             else:
-                logger.warning(f"Topic hash {topic_hash} not found in cache.")
-                send_simple_message("âš ï¸ This alert is too old (cache expired) or the topic record is no longer available.")
-                return
+                topic = next((t for t in _latest_topics if (t.get("story_hash") or "") == topic_hash), None)
+                if topic:
+                    logger.info(f"Loaded specific topic {topic_hash} from in-memory latest topics.")
+                else:
+                    logger.warning(f"Topic hash {topic_hash} not found in cache.")
+                    send_simple_message("âš ï¸ This alert is too old (cache expired) or the topic record is no longer available.")
+                    return
         except Exception as e:
             logger.error(f"Error loading topic {topic_hash} from cache: {e}")
 
@@ -978,6 +985,7 @@ if __name__ == "__main__":
         logger.info("Done.")
     else:
         run_agent_loop()
+
 
 
 
