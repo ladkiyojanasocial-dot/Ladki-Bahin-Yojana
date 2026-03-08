@@ -100,33 +100,52 @@ if ($rank_kw === '') {
 $faq_schema = isset($data['faq_schema']) ? $data['faq_schema'] : '';
 $lang = isset($data['lang']) ? sanitize_key($data['lang']) : '';
 
-$cat_id = 0;
-$terms = get_terms(['taxonomy' => 'category', 'name' => $category, 'hide_empty' => false]);
-if (!empty($terms)) {
-    $cat_id = (int) $terms[0]->term_id;
-} else {
-    $created = wp_insert_term($category, 'category');
-    if (!is_wp_error($created)) {
-        $cat_id = (int) $created['term_id'];
+function resolve_or_create_term_id($taxonomy, $raw_value) {
+    $value = sanitize_text_field((string) $raw_value);
+    if ($value === '') {
+        return 0;
     }
+
+    $slug = sanitize_title($value);
+    $term = get_term_by('slug', $slug, $taxonomy);
+    if ($term && !is_wp_error($term)) {
+        return (int) $term->term_id;
+    }
+
+    $term = get_term_by('name', $value, $taxonomy);
+    if ($term && !is_wp_error($term)) {
+        return (int) $term->term_id;
+    }
+
+    $pretty_name = trim(preg_replace('/\s+/', ' ', str_replace('-', ' ', $value)));
+    if ($pretty_name === '') {
+        $pretty_name = $value;
+    }
+    if ($taxonomy === 'category') {
+        $pretty_name = ucwords($pretty_name);
+    }
+
+    $created = wp_insert_term($pretty_name, $taxonomy, ['slug' => $slug]);
+    if (is_wp_error($created)) {
+        if ($created->get_error_code() === 'term_exists') {
+            return (int) $created->get_error_data();
+        }
+        return 0;
+    }
+
+    return (int) ($created['term_id'] ?? 0);
 }
+
+$cat_id = resolve_or_create_term_id('category', $category);
 
 $tag_ids = [];
 foreach ($tags as $tag_name) {
-    $tag_name = sanitize_text_field($tag_name);
-    if ($tag_name === '') {
-        continue;
-    }
-    $tag = get_term_by('name', $tag_name, 'post_tag');
-    if ($tag) {
-        $tag_ids[] = (int) $tag->term_id;
-    } else {
-        $created = wp_insert_term($tag_name, 'post_tag');
-        if (!is_wp_error($created)) {
-            $tag_ids[] = (int) $created['term_id'];
-        }
+    $tag_id = resolve_or_create_term_id('post_tag', $tag_name);
+    if ($tag_id > 0) {
+        $tag_ids[] = $tag_id;
     }
 }
+$tag_ids = array_values(array_unique($tag_ids));
 
 $featured_id = 0;
 if (!empty($data['featured_image_base64']) && !empty($data['featured_image_filename'])) {
@@ -163,6 +182,8 @@ $post_arr = [
     'post_type' => 'post',
     'post_author' => $webhook_author_id,
     'comment_status' => 'open',
+    'post_category' => $cat_id ? [$cat_id] : [],
+    'tags_input' => $tags,
     'meta_input' => [
         'rank_math_title' => $rank_title,
         'rank_math_description' => $rank_desc,
@@ -216,4 +237,6 @@ echo json_encode([
         'rank_math_description' => get_post_meta($post_id, 'rank_math_description', true),
         'rank_math_focus_keyword' => get_post_meta($post_id, 'rank_math_focus_keyword', true),
     ],
+    'assigned_category_id' => $cat_id,
+    'assigned_tag_ids' => $tag_ids,
 ]);

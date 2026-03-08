@@ -13,7 +13,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import config
 from writer.source_fetcher import fetch_multiple_sources
-from writer.seo_prompt import build_article_prompt, get_category_for_topic
+from writer.seo_prompt import build_article_prompt, get_category_for_topic, get_outbound_links_for_prompt
 from detection.language_router import normalize_lang
 from gemini_client import generate_content_with_fallback
 
@@ -61,6 +61,68 @@ def _search_news_for_trend(keyword):
         logger.warning(f"Failed to fetch NewsAPI for trend: {e}")
         
     return urls
+
+
+def _ensure_article_taxonomy(article, topic):
+    keyword = (article.get("matched_keyword") or topic.get("matched_keyword") or "Women Welfare").strip()
+    default_tags = [
+        keyword,
+        (topic.get("content_angle") or "Women Scheme Guide").replace("_", " ").title(),
+        "Women Welfare",
+        "Government Scheme",
+        "Latest Update",
+    ]
+    seen = set()
+    final_tags = []
+    for tag in list(article.get("tags", [])) + default_tags:
+        clean = re.sub(r"\s+", " ", str(tag or "")).strip(" ,.-")
+        if not clean:
+            continue
+        lowered = clean.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        final_tags.append(clean[:40])
+        if len(final_tags) == 5:
+            break
+    while len(final_tags) < 5:
+        filler = f"Women Update {len(final_tags) + 1}"
+        if filler.lower() in seen:
+            continue
+        final_tags.append(filler)
+        seen.add(filler.lower())
+    article["tags"] = final_tags
+    if not article.get("category") or article.get("category") == "uncategorized":
+        article["category"] = get_category_for_topic(topic.get("topic", ""), keyword)
+    return article
+
+
+def _ensure_outbound_source_link(article, source_texts):
+    full_content = article.get("full_content") or article.get("content_html") or ""
+    if re.search(r'<a\s+[^>]*href="https?://', full_content, flags=re.IGNORECASE):
+        return article
+
+    outbound_links = get_outbound_links_for_prompt(source_texts)
+    if not outbound_links:
+        return article
+
+    chosen = outbound_links[0]
+    anchor_text = chosen.get("label") or "official source"
+    link_html = (
+        '\n<p><strong>Official source:</strong> '
+        f'<a href="{chosen["url"]}">{anchor_text}</a></p>\n'
+    )
+
+    if article.get("content_html"):
+        article["content_html"] = article["content_html"].rstrip() + link_html
+    if article.get("full_content"):
+        if "</div>" in article["full_content"]:
+            article["full_content"] = article["full_content"].replace("</div>", link_html + "</div>", 1)
+        else:
+            article["full_content"] = article["full_content"].rstrip() + link_html
+    if article.get("content"):
+        article["content"] = article["content"].rstrip() + f"\n\nOfficial source: {chosen['url']}"
+    return article
 
 
 def generate_article(topic, source_urls=None):
@@ -159,14 +221,11 @@ def generate_article(topic, source_urls=None):
             logger.debug(f"  Raw output preview: {raw_output[:500]}...")
             return None
         article["sources_used"] = [s.get("source_domain", "") for s in source_texts]
-        article["word_count"] = len(article.get("content_html", "").split())
-        # Assign category from topic: match scheme categories or default to "news"
-        article["category"] = get_category_for_topic(
-            topic.get("topic", ""),
-            topic.get("matched_keyword", ""),
-        )
+        article = _ensure_article_taxonomy(article, topic)
         article["lang"] = target_lang if target_lang in ("en", "hi", "te") else article.get("lang", "en")
-        logger.info(f"  âœ… Article generated: '{article['title']}' (category: {article['category']})")
+        article = _ensure_outbound_source_link(article, source_texts)
+        article["word_count"] = len((article.get("content_html") or article.get("full_content") or "").split())
+        logger.info(f"  ??? Article generated: '{article['title']}' (category: {article['category']})")
     else:
         logger.error("  âŒ Failed to parse Gemini output. Check that the model returns TITLE, CONTENT_START/END, etc.")
         logger.debug(f"  Raw output preview: {raw_output[:400]}...")

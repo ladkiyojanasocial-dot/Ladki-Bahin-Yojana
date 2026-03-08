@@ -25,6 +25,8 @@ def validate_article_for_publish(article, min_words=700):
     words = [w for w in content_text.split() if w.strip()]
     intro_text = " ".join(words[:120])
     focus_keyword = (article.get("matched_keyword") or article.get("title") or "").strip()
+    category = (article.get("category") or "").strip().lower()
+    tags = [str(tag).strip() for tag in (article.get("tags") or []) if str(tag).strip()]
 
     normalized_keyword = _normalize_text(focus_keyword)
     normalized_title = _normalize_text(title)
@@ -52,6 +54,10 @@ def validate_article_for_publish(article, min_words=700):
 
     if internal_links < 2:
         issues.append("Internal linking is weak (needs at least 2 internal links)")
+    if category in ("", "uncategorized"):
+        issues.append("Article category is missing or Uncategorized")
+    if len(tags) < 3:
+        issues.append("Article tags are missing or too few (needs at least 3)")
     if outbound_links < 1:
         issues.append("Outbound linking is missing (needs at least 1 external source link)")
     if official_outbound_links < 1:

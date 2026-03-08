@@ -369,7 +369,7 @@ def create_post(article, featured_image_path=None, status=None):
                             article.get("title", ""),
                             article.get("slug", ""),
                             published_at=datetime.utcnow().isoformat(),
-                            focus_keyword=article.get("matched_keyword", "") or article.get("focus_keyword", ""),
+                            focus_keyword="",
                         )
                     except Exception as e:
                         logger.warning(f"  Could not add published post for internal links: {e}")
@@ -465,6 +465,16 @@ def _publish_via_webhook(article, featured_image_path=None, status=None):
                             f"description={bool(seo_meta.get('rank_math_description'))}, "
                             f"focus={bool(seo_meta.get('rank_math_focus_keyword'))})"
                         )
+                    if data.get("assigned_category_id") or data.get("assigned_tag_ids"):
+                        logger.info(
+                            f"  Webhook taxonomy assignment: category={data.get('assigned_category_id')} "
+                            f"tags={data.get('assigned_tag_ids', [])}"
+                        )
+                    if data.get("post_id"):
+                        try:
+                            _set_rankmath_meta(data.get("post_id"), article)
+                        except Exception as e:
+                            logger.debug(f"  RankMath REST sync after webhook failed: {e}")
                     return {
                         "post_id": data.get("post_id"),
                         "post_url": data.get("post_url", ""),
