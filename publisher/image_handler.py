@@ -374,8 +374,8 @@ def _generate_placeholder_image(article_title, output_path_webp, output_path_jpg
 def generate_featured_image(article_title, save_dir=None, source_url=None):
     """
     Generate a featured image. Fallback chain (in order):
-    1. Gemini 2.5 Flash Image (free, best quality AI, 500 req/day)
-    2. Unsplash (free, real stock photos, 50 req/hr)
+    1. Gemini 2.5 Flash Image across all configured Gemini keys
+    2. Unsplash (only after Gemini fails)
     3. Source article image (og:image or first img)
     4. Pollinations (free AI, unreliable)
     Compresses to WebP and JPEG under 100KB.
@@ -392,18 +392,19 @@ def generate_featured_image(article_title, save_dir=None, source_url=None):
     logger.info(f"  Generating featured image for: {article_title[:60]}")
 
     # â”€â”€ 1. Source article og:image â”€â”€
-    if source_url and source_url.startswith("http") and "trends.google" not in source_url:
-        logger.info(f"    [1/4] Trying source article image from: {source_url[:60]}")
-        webp, jpg = _try_source_image(source_url, output_path_webp, output_path_jpg)
+    # Gemini first across all configured keys
+    if getattr(config, "USE_GEMINI_FLASH_IMAGE", True):
+        logger.info("    [1/4] Trying Gemini Flash Image...")
+        webp, jpg = _try_gemini_flash_image(article_title, output_path_webp, output_path_jpg)
         if webp and jpg:
             return webp, jpg
-        logger.info("    [1/4] Source image: no image produced")
+        logger.info("    [1/4] Gemini Flash Image: no image produced")
     else:
-        logger.info("    [1/4] Source image: skipped (no usable article URL)")
+        logger.info("    [1/4] Gemini Flash Image: skipped (disabled)")
 
-    # â”€â”€ 2. Unsplash (real stock photos) â”€â”€
+    # Unsplash only after Gemini has failed
     if getattr(config, "UNSPLASH_ACCESS_KEY", None):
-        logger.info("    [2/4] Trying Unsplash...")
+        logger.info("    [2/4] Trying Unsplash after Gemini fallback...")
         webp, jpg = _try_unsplash_image(article_title, output_path_webp, output_path_jpg)
         if webp and jpg:
             return webp, jpg
@@ -411,17 +412,17 @@ def generate_featured_image(article_title, save_dir=None, source_url=None):
     else:
         logger.info("    [2/4] Unsplash: skipped (no API key)")
 
-    # â”€â”€ 3. Gemini Flash Image â”€â”€
-    if getattr(config, "USE_GEMINI_FLASH_IMAGE", True):
-        logger.info("    [3/4] Trying Gemini Flash Image...")
-        webp, jpg = _try_gemini_flash_image(article_title, output_path_webp, output_path_jpg)
+    # Source article image only after Gemini and Unsplash
+    if source_url and source_url.startswith("http") and "trends.google" not in source_url:
+        logger.info(f"    [3/4] Trying source article image from: {source_url[:60]}")
+        webp, jpg = _try_source_image(source_url, output_path_webp, output_path_jpg)
         if webp and jpg:
             return webp, jpg
-        logger.info("    [3/4] Gemini Flash Image: no image produced")
+        logger.info("    [3/4] Source image: no image produced")
     else:
-        logger.info("    [3/4] Gemini Flash Image: skipped (disabled)")
+        logger.info("    [3/4] Source image: skipped (no usable article URL)")
 
-    # â”€â”€ 4. Pollinations (free AI, unreliable) â”€â”€
+    # Pollinations remains the last network fallback
     logger.info("    [4/4] Trying Pollinations...")
     webp, jpg = _try_pollinations_image(article_title, output_path_webp, output_path_jpg)
     if webp and jpg:
