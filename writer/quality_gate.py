@@ -2,6 +2,7 @@
 Quality gate checks before publishing articles.
 """
 import re
+import config
 
 
 def _normalize_text(value):
@@ -43,7 +44,8 @@ def validate_article_for_publish(article, min_words=700):
     if len(words) < min_words:
         issues.append(f"Article is thin ({len(words)} words); needs at least {min_words} words")
 
-    internal_links = len(re.findall(r"<a\s+[^>]*href=\"https://kisanportal\.org/", full_content, flags=re.IGNORECASE))
+    base_url = re.escape(config.WP_URL.rstrip("/"))
+    internal_links = len(re.findall(rf'<a\s+[^>]*href="{base_url}/', full_content, flags=re.IGNORECASE))
     if internal_links < 2:
         issues.append("Internal linking is weak (needs at least 2 internal links)")
 

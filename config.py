@@ -17,7 +17,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
-# Collect all Gemini/Google AI keys for rotation (rate-limit fallback). Order: GEMINI_API_KEYS, then GEMINI_API_KEY, then GOOGLE_API_KEY.
+# Collect all Gemini keys for rotation. Legacy single-key envs are still accepted if present.
 _gemini_keys_list = []
 for env_name in ("GEMINI_API_KEYS", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
     val = os.getenv(env_name, "").strip()
@@ -35,6 +35,7 @@ WP_USERNAME = os.getenv("WP_USERNAME")
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD")
 WP_PUBLISH_WEBHOOK_URL = os.getenv("WP_PUBLISH_WEBHOOK_URL", "").strip()
 WP_PUBLISH_SECRET = os.getenv("WP_PUBLISH_SECRET", "").strip()
+APP_STATE_NAMESPACE = os.getenv("APP_STATE_NAMESPACE", "ladki-bahin-agent").strip() or "ladki-bahin-agent"
 # Optional: Unsplash API for high-quality stock photos (50 req/hr free). If set, we try Unsplash before AI image gen.
 UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "").strip() or None
 
@@ -192,7 +193,7 @@ TRENDS_GEO = "IN"
 TRENDS_KEYWORDS_PER_BATCH = 5
 TRENDS_KEYWORDS_PER_CYCLE = 25
 TRENDS_KEYWORDS_MAX = 60
-NEWSAPI_ROTATING_QUERY_COUNT = 10
+NEWSAPI_ROTATING_QUERY_COUNT = 1
 
 # WordPress Settings
 WP_DEFAULT_CATEGORY = "Uncategorized"
@@ -206,8 +207,13 @@ IMAGEN_MODEL = os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002")
 SKIP_AI_IMAGE = os.getenv("SKIP_AI_IMAGE", "false").lower() in ("true", "1", "yes")
 USE_GEMINI_IMAGEN = os.getenv("USE_GEMINI_IMAGEN", "false").lower() in ("true", "1", "yes")
 USE_PLACEHOLDER_IMAGE = os.getenv("USE_PLACEHOLDER_IMAGE", "false").lower() in ("true", "1", "yes")
+USE_GEMINI_FLASH_IMAGE = os.getenv("USE_GEMINI_FLASH_IMAGE", "true").lower() in ("true", "1", "yes")
+IMAGE_GEMINI_FLASH_RETRIES = max(0, int(os.getenv("IMAGE_GEMINI_FLASH_RETRIES", "0")))
+IMAGE_POLLINATIONS_TIMEOUT_SECONDS = max(10, int(os.getenv("IMAGE_POLLINATIONS_TIMEOUT_SECONDS", "20")))
 
 # Logging
 LOG_FILE = "agent.log"
 LOG_LEVEL = "INFO"
+
+
 

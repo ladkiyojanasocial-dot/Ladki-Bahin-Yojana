@@ -21,7 +21,7 @@ from database.db import (
 logger = logging.getLogger(__name__)
 
 OFFICIAL_SOURCE_HINTS = (
-    "pib", "gov", "icar", "agriculture", "ministry", "state portal"
+    "pib", "gov", "ministry", "women", "mahila", "state portal"
 )
 HIGH_INTENT_TERMS = (
     "installment", "kist", "status", "ekyc", "eligibility", "last date",
@@ -150,27 +150,26 @@ def _suggest_article_title(cluster_stories):
             matched_kw = s["matched_keyword"]
             break
 
+    scheme = find_best_scheme(f"{combined} {matched_kw}")
+    scheme_name = (scheme or {}).get("name", "").strip()
+
     instal_match = re.search(r"(\d+)(?:st|nd|rd|th)?\s*instal?l?ment", combined_lower, re.I)
-    if instal_match and ("pm kisan" in combined_lower or "pm-kisan" in combined_lower or matched_kw and "kisan" in matched_kw.lower()):
+    if instal_match and scheme_name:
         num = instal_match.group(1)
-        return f"PM Kisan {num}th Installment Date and Status {datetime.utcnow().year}"
+        return f"{scheme_name} {num}th Installment Date and Status {datetime.utcnow().year}"
 
     if "ekyc" in combined_lower or "e-kyc" in combined_lower:
-        if "pm kisan" in combined_lower or (matched_kw and "kisan" in matched_kw.lower()):
-            return f"PM Kisan eKYC Deadline {datetime.utcnow().year}: How to Complete and Check Status"
-        return f"Farmer Scheme eKYC Update {datetime.utcnow().year}: Process and Last Date"
+        if scheme_name:
+            return f"{scheme_name} eKYC Deadline {datetime.utcnow().year}: How to Complete and Check Status"
+        return f"Women Scheme eKYC Update {datetime.utcnow().year}: Process and Last Date"
 
     if "status check" in combined_lower or "check status" in combined_lower:
-        if "pm kisan" in combined_lower or (matched_kw and "kisan" in matched_kw.lower()):
-            return f"PM Kisan Status Check {datetime.utcnow().year}: Payment and Beneficiary Status"
-        if "pmfby" in combined_lower or "fasal bima" in combined_lower:
-            return "PMFBY Claim Status Check: How to Check Crop Insurance Status"
+        if scheme_name:
+            return f"{scheme_name} Status Check {datetime.utcnow().year}: Payment and Beneficiary Status"
 
     if "enrollment" in combined_lower or "enrolment" in combined_lower or "registration" in combined_lower:
-        if "pmfby" in combined_lower or "rabi" in combined_lower or "kharif" in combined_lower:
-            return "PMFBY Rabi/Kharif Enrollment: Last Date and How to Apply"
-        if "enam" in combined_lower or "e-nam" in combined_lower:
-            return "e-NAM Registration: Mandi Registration and Price Guide"
+        if scheme_name:
+            return f"{scheme_name} Registration {datetime.utcnow().year}: Last Date and How to Apply"
 
     if "new scheme" in combined_lower or "launched" in combined_lower or "announced" in combined_lower:
         for s in cluster_stories:
@@ -278,6 +277,7 @@ def detect_spikes(all_stories, trends_data=None):
     conn.close()
     logger.info(f"Spike Detector: Identified {len(trending_topics)} trending topics")
     return trending_topics
+
 
 
 

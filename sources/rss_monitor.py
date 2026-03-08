@@ -1,5 +1,5 @@
-"""
-RSS Feed Monitor — Fetches and filters Agricultural stories from major Indian news feeds.
+﻿"""
+RSS Feed Monitor - Fetches and filters women-welfare stories from major Indian news feeds.
 """
 import feedparser
 import hashlib
@@ -21,7 +21,7 @@ def _normalize(text):
 
 
 def _matches_keywords(text, keywords=None):
-    """Check if text matches any Agricultural related keywords."""
+    """Check if text matches any configured women-welfare keywords."""
     if keywords is None:
         keywords = config.ALL_KEYWORDS
     normalized = _normalize(text)
@@ -39,7 +39,7 @@ def _hash_story(title, url):
 
 def fetch_rss_stories():
     """
-    Fetch stories from all configured RSS feeds and filter for Agricultural relevance.
+    Fetch stories from all configured RSS feeds and filter for women-welfare relevance.
     """
     stories = []
 
@@ -48,7 +48,7 @@ def fetch_rss_stories():
             logger.info(f"Fetching RSS: {feed_name}")
             feed = feedparser.parse(
                 feed_url,
-                agent="KisanPortalAgent/1.0 (RSS; +https://kisanportal.org)",
+                agent="LadkiBahinAgent/1.0 (RSS; +https://womenempowermentportal.org)",
                 request_headers={"Accept": "application/rss+xml, application/xml, text/xml, */*"},
             )
 
@@ -56,22 +56,20 @@ def fetch_rss_stories():
                 logger.warning(f"RSS feed error for {feed_name}: {feed.bozo_exception}")
                 continue
 
-            # Agri-only feeds: accept all entries (still apply exclusion filter later). Others: require keyword match.
             is_agri_only_feed = getattr(config, "AGRI_ONLY_FEEDS", []) and feed_name in getattr(config, "AGRI_ONLY_FEEDS", [])
 
-            for entry in feed.entries[:30]:  # Check latest 30 entries
+            for entry in feed.entries[:30]:
                 title = entry.get("title", "")
                 summary = entry.get("summary", entry.get("description", ""))
                 link = entry.get("link", "")
 
                 combined_text = f"{title} {summary}"
                 if is_agri_only_feed:
-                    is_match, matched_keyword = True, "agriculture"
+                    is_match, matched_keyword = True, "women welfare"
                 else:
                     is_match, matched_keyword = _matches_keywords(combined_text)
 
                 if is_match:
-                    # Parse published date
                     published = None
                     if hasattr(entry, "published_parsed") and entry.published_parsed:
                         try:
@@ -92,13 +90,12 @@ def fetch_rss_stories():
                         "story_hash": _hash_story(title, link),
                     }
                     stories.append(story)
-                    logger.debug(f"  ✓ Matched: {title[:80]} [{matched_keyword}]")
+                    logger.debug(f"  Matched: {title[:80]} [{matched_keyword}]")
 
         except Exception as e:
             logger.error(f"Error fetching RSS feed {feed_name}: {e}")
             continue
 
-    # Exclusion filter — remove cricket, rugby, etc. at source level
     exclude_kws = getattr(config, "EXCLUDE_KEYWORDS", [])
     filtered = []
     excluded_count = 0
@@ -112,7 +109,7 @@ def fetch_rss_stories():
     if excluded_count > 0:
         logger.info(f"RSS Monitor: Excluded {excluded_count} irrelevant stories (sports/celebrity/etc.)")
 
-    logger.info(f"RSS Monitor: Found {len(filtered)} agricultural stories across {len(config.RSS_FEEDS)} feeds")
+    logger.info(f"RSS Monitor: Found {len(filtered)} women-welfare stories across {len(config.RSS_FEEDS)} feeds")
     return filtered
 
 

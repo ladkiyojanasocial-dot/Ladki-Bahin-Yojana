@@ -23,12 +23,12 @@ def _hash_story(title, url):
 
 def _build_rotating_queries():
     base_queries = [
-        "agriculture india",
-        "farmer scheme india",
-        "agriculture minister india",
-        "MSP minimum support price",
-        "kharif rabi crop india",
-        "mandi prices india",
+        "women welfare scheme india",
+        "women empowerment yojana india",
+        "mahila scheme india",
+        "girl child scheme india",
+        "women benefit portal india",
+        "women entrepreneurship scheme india",
     ]
     scheme_queries = get_trends_keywords(limit=60)
     all_q = base_queries + scheme_queries
@@ -41,7 +41,7 @@ def _build_rotating_queries():
         seen.add(k)
         dedup.append(q.strip())
 
-    max_q = getattr(config, "NEWSAPI_ROTATING_QUERY_COUNT", 10)
+    max_q = getattr(config, "NEWSAPI_ROTATING_QUERY_COUNT", 1)
     hour = datetime.utcnow().hour
     start = (hour * 2) % max(len(dedup), 1)
     ring = dedup[start:] + dedup[:start]
@@ -59,8 +59,8 @@ def fetch_news_headlines():
         return stories
 
     try:
-        logger.info("NewsAPI: Fetching top headlines for agriculture in India")
-        top = newsapi.get_top_headlines(q="agriculture OR farmer", country="in", page_size=20)
+        logger.info("NewsAPI: Fetching top headlines for women welfare in India")
+        top = newsapi.get_top_headlines(q="women welfare OR mahila yojana OR ladli behna", country="in", page_size=20)
         if top.get("status") == "ok":
             for article in top.get("articles", []):
                 title = article.get("title", "")
@@ -72,7 +72,7 @@ def fetch_news_headlines():
                     "url": article.get("url", ""),
                     "source": f"NewsAPI/{article.get('source', {}).get('name', 'Unknown')}",
                     "source_type": "newsapi",
-                    "matched_keyword": "agriculture",
+                    "matched_keyword": "women welfare",
                     "published_at": _parse_date(article.get("publishedAt")),
                     "story_hash": _hash_story(title, article.get("url", "")),
                     "image_url": article.get("urlToImage", ""),
@@ -150,4 +150,3 @@ def _parse_date(date_str):
         return datetime.fromisoformat(date_str.replace("Z", "+00:00")).replace(tzinfo=None)
     except Exception:
         return datetime.utcnow()
-

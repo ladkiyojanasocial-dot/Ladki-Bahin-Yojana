@@ -1,5 +1,5 @@
-"""
-Gemini Client Helper — Handles API key rotation and retries when rate limits are exhausted.
+﻿"""
+Gemini Client Helper â€” Handles API key rotation and retries when rate limits are exhausted.
 """
 import logging
 import time
@@ -49,22 +49,22 @@ def generate_content_with_fallback(
                     if key_idx == len(keys) - 1:
                         # Non-retryable error, and it's the last key, so raise
                         raise
-                    logger.warning(f"  ⚠️ Error from key {key_idx + 1}: {e}. Trying next key...")
+                    logger.warning(f"  âš ï¸ Error from key {key_idx + 1}: {e}. Trying next key...")
                     break # Try next key
                 
                 # Check if this is a DAILY quota exhaustion
                 if "limit: 0" in error_str or "PerDay" in error_str:
-                    logger.warning(f"  ⚠️ Gemini daily quota exhausted for key {key_idx + 1}/{len(keys)}.")
+                    logger.warning(f"  âš ï¸ Gemini daily quota exhausted for key {key_idx + 1}/{len(keys)}.")
                     break # Go to next key
                 
                 # It's a per-minute rate limit. If we have more keys, just jump to the next one.
                 if key_idx < len(keys) - 1:
-                    logger.warning(f"  ⚠️ Gemini rate limited on key {key_idx + 1}, trying next key immediately...")
+                    logger.warning(f"  âš ï¸ Gemini rate limited on key {key_idx + 1}, trying next key immediately...")
                     break # Go to next key
                 
                 # If we are on the LAST key, do exponential backoff
                 if attempt >= max_retries_per_key:
-                    logger.error(f"  ❌ Gemini API exhausted all {max_retries_per_key} retries on the last key.")
+                    logger.error(f"  âŒ Gemini API exhausted all {max_retries_per_key} retries on the last key.")
                     raise
                 
                 # Try to parse retry delay from error message (e.g., "Please retry in 18.5s")
@@ -74,14 +74,14 @@ def generate_content_with_fallback(
                     parsed_delay = float(retry_match.group(1))
                     delay = max(delay, parsed_delay + 2)
                     
-                logger.warning(f"  ⏳ Gemini rate limited on final key (attempt {attempt + 1}/{max_retries_per_key}). "
+                logger.warning(f"  â³ Gemini rate limited on final key (attempt {attempt + 1}/{max_retries_per_key}). "
                                f"Waiting {delay:.0f}s before retry...")
                 time.sleep(delay)
                 
     raise Exception("All Gemini API keys failed or exhausted quota.")
 
 
-def generate_image_with_gemini_flash(prompt, max_retries_per_key=2, base_delay=10):
+def generate_image_with_gemini_flash(prompt, max_retries_per_key=None, base_delay=10):
     """
     Generate an image using Gemini 2.5 Flash Image (free tier, 500 req/day).
     Uses generate_content with response_modalities including IMAGE.
@@ -175,19 +175,19 @@ def generate_image_with_fallback(
                 if not is_rate_limit:
                     if "404" in error_str or key_idx == len(keys) - 1:
                         raise
-                    logger.warning(f"  ⚠️ Error from key {key_idx + 1}: {e}. Trying next key...")
+                    logger.warning(f"  âš ï¸ Error from key {key_idx + 1}: {e}. Trying next key...")
                     break 
                 
                 if "limit: 0" in error_str or "PerDay" in error_str:
-                    logger.warning(f"  ⚠️ Gemini daily quota exhausted for key {key_idx + 1}/{len(keys)}.")
+                    logger.warning(f"  âš ï¸ Gemini daily quota exhausted for key {key_idx + 1}/{len(keys)}.")
                     break
                 
                 if key_idx < len(keys) - 1:
-                    logger.warning(f"  ⚠️ Gemini rate limited on key {key_idx + 1}, trying next key immediately...")
+                    logger.warning(f"  âš ï¸ Gemini rate limited on key {key_idx + 1}, trying next key immediately...")
                     break
                 
                 if attempt >= max_retries_per_key:
-                    logger.error(f"  ❌ Gemini API exhausted all {max_retries_per_key} retries on the last key.")
+                    logger.error(f"  âŒ Gemini API exhausted all {max_retries_per_key} retries on the last key.")
                     raise
                 
                 delay = base_delay * (2 ** attempt)
@@ -196,8 +196,9 @@ def generate_image_with_fallback(
                     parsed_delay = float(retry_match.group(1))
                     delay = max(delay, parsed_delay + 2)
                     
-                logger.warning(f"  ⏳ Gemini rate limited on final key (attempt {attempt + 1}/{max_retries_per_key}). "
+                logger.warning(f"  â³ Gemini rate limited on final key (attempt {attempt + 1}/{max_retries_per_key}). "
                                f"Waiting {delay:.0f}s before retry...")
                 time.sleep(delay)
                 
     raise Exception("All Gemini API keys failed or exhausted quota.")
+

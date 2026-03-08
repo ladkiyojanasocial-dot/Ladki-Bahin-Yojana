@@ -49,19 +49,28 @@ _update_offset = None     # Telegram getUpdates offset
 _gemini_quota_exhausted = False  # Set True when Gemini daily quota is hit
 _article_attempted_this_run = False  # Limit one article generation per --once run (avoids duplicate failures)
 _publish_in_progress = False  # Prevent duplicate /approve callbacks from repeated publish attempts
+_state_version = 2
+
+
+def _build_state_payload():
+    return {
+        "state_version": _state_version,
+        "app_namespace": getattr(config, "APP_STATE_NAMESPACE", "ladki-bahin-agent"),
+        "article": _pending_article,
+        "image_path": _pending_image_path,
+        "update_offset": _update_offset,
+    }
+
 
 def save_pending_state():
     """Save pending article, image path, and telegram offset to disk."""
-    state = {
-        "article": _pending_article,
-        "image_path": _pending_image_path,
-        "update_offset": _update_offset
-    }
+    state = _build_state_payload()
     try:
         with open("pending_state.json", "w", encoding="utf-8") as f:
             json.dump(state, f, default=str)
     except Exception as e:
         logger.error(f"Failed to save pending state: {e}")
+
 
 def load_pending_state():
     """Load pending article, image path, and telegram offset from disk."""
@@ -70,13 +79,23 @@ def load_pending_state():
         if os.path.exists("pending_state.json"):
             with open("pending_state.json", "r", encoding="utf-8") as f:
                 state = json.load(f)
+                if state.get("state_version") != _state_version:
+                    _pending_article = None
+                    _pending_image_path = None
+                    _update_offset = state.get("update_offset")
+                    save_pending_state()
+                    return False
+                if state.get("app_namespace") != getattr(config, "APP_STATE_NAMESPACE", "ladki-bahin-agent"):
+                    _pending_article = None
+                    _pending_image_path = None
+                    _update_offset = state.get("update_offset")
+                    save_pending_state()
+                    return False
                 _pending_article = state.get("article")
                 _pending_image_path = state.get("image_path")
                 _update_offset = state.get("update_offset")
-                # Image file may not persist across runs (e.g. GitHub Actions); clear if missing
                 if _pending_image_path and not os.path.exists(_pending_image_path):
                     _pending_image_path = None
-                # Treat invalid or empty article as no pending (avoid stuck "already pending" with nothing visible)
                 if not isinstance(_pending_article, dict) or not _pending_article.get("title"):
                     _pending_article = None
                     save_pending_state()
@@ -490,10 +509,10 @@ def _handle_write_article(topic_hash=None):
         return
 
     if not getattr(config, "GEMINI_API_KEYS", None) or not config.GEMINI_API_KEYS:
-        logger.error("No Gemini API key configured. Add GEMINI_API_KEY or GEMINI_API_KEYS to .env in the project root.")
+        logger.error("No Gemini API key configured. Add GEMINI_API_KEYS to .env in the project root.")
         send_simple_message(
             "âŒ Gemini API key not set.\n\n"
-            "Add GEMINI_API_KEY=your_key to a .env file in the project folder (same folder as main.py), then run again."
+            "Add GEMINI_API_KEYS=key1,key2 to a .env file in the project folder (same folder as main.py), then run again."
         )
         return
 
@@ -847,7 +866,7 @@ def test_all_connections():
     try:
         from newsapi import NewsApiClient
         newsapi = NewsApiClient(api_key=config.NEWS_API_KEY)
-        result = newsapi.get_top_headlines(q="women empowerment scheme", language="en", page_size=1)
+        result = newsapi.get_top_headlines(q="women welfare scheme", language="en", page_size=1)
         if result.get("status") == "ok":
             print(f"   âœ… Connected â€” {result.get('totalResults', 0)} results available")
         else:
@@ -959,6 +978,7 @@ if __name__ == "__main__":
         logger.info("Done.")
     else:
         run_agent_loop()
+
 
 
 

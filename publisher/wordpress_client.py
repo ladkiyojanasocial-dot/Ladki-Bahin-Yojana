@@ -1,4 +1,4 @@
-"""
+﻿"""
 WordPress Client - Handles all WordPress REST API interactions:
 creating posts, uploading media, setting categories/tags,
 and injecting RankMath SEO fields.
@@ -26,7 +26,7 @@ TIMEOUT = 30
 RETRY_DELAY = 5
 RETRY_403_DELAY = 4
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; KisanPortalAgent/1.0; +https://kisanportal.org)",
+    "User-Agent": "Mozilla/5.0 (compatible; LadkiBahinAgent/1.0; +https://womenempowermentportal.org)",
     "Referer": f"{config.WP_URL}/",
     "Accept": "application/json, */*; q=0.1",
     "Accept-Language": "en-US,en;q=0.9",
@@ -238,7 +238,7 @@ def create_post(article, featured_image_path=None, status=None):
 def _publish_via_webhook(article, featured_image_path=None, status=None):
     """
     Publish via webhook on the user's server. No REST API from the agent means no firewall block.
-    Requires deploy/kisan-agent-webhook.php on the server and WP_PUBLISH_WEBHOOK_URL +
+    Requires the publish webhook to be deployed on the server and WP_PUBLISH_WEBHOOK_URL +
     WP_PUBLISH_SECRET in env.
     """
     global LAST_PUBLISH_ERROR
@@ -641,4 +641,7 @@ if __name__ == "__main__":
         print("WordPress connection successful!")
     else:
         print("WordPress connection failed!")
+
+
+
 
