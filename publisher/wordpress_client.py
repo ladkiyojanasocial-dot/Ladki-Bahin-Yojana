@@ -4,10 +4,12 @@ creating posts, uploading media, setting categories/tags,
 and injecting RankMath SEO fields.
 """
 import base64
+import json
 import logging
 import os
 import re
 import time
+from html import unescape
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -118,6 +120,159 @@ def _get_rankmath_payload(article):
     }
 
 
+SITE_KEYWORD_CACHE_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "site_keyword_inventory.json")
+SITE_KEYWORD_CACHE_TTL_SECONDS = 6 * 60 * 60
+
+
+def _normalize_keywordish(value):
+    value = unescape(str(value or "")).lower()
+    value = re.sub(r'<[^>]+>', ' ', value)
+    value = re.sub(r'[^a-z0-9]+', ' ', value)
+    return re.sub(r'\s+', ' ', value).strip()
+
+
+def _build_local_inventory():
+    inventory = {"keywords": set(), "titles": set(), "slugs": set(), "posts": []}
+    posts_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "published_posts.json")
+    if not os.path.exists(posts_file):
+        return inventory
+    try:
+        with open(posts_file, "r", encoding="utf-8") as f:
+            rows = json.load(f)
+    except Exception:
+        return inventory
+
+    for row in rows:
+        title = _normalize_keywordish(row.get("title", ""))
+        slug = _normalize_keywordish((row.get("slug", "") or "").replace("-", " "))
+        focus_keyword = _normalize_keywordish(row.get("focus_keyword", ""))
+        if title:
+            inventory["titles"].add(title)
+        if slug:
+            inventory["slugs"].add(slug)
+        if focus_keyword:
+            inventory["keywords"].add(focus_keyword)
+        inventory["posts"].append({
+            "title": row.get("title", ""),
+            "slug": row.get("slug", ""),
+            "focus_keyword": row.get("focus_keyword", ""),
+            "url": row.get("url", ""),
+        })
+    return inventory
+
+
+def _read_site_keyword_cache():
+    if not os.path.exists(SITE_KEYWORD_CACHE_FILE):
+        return None
+    try:
+        with open(SITE_KEYWORD_CACHE_FILE, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        fetched_at = float(payload.get("fetched_at", 0))
+        if fetched_at and (time.time() - fetched_at) <= SITE_KEYWORD_CACHE_TTL_SECONDS:
+            return payload.get("inventory")
+    except Exception:
+        return None
+    return None
+
+
+def _write_site_keyword_cache(inventory):
+    serializable = {
+        "keywords": sorted(inventory.get("keywords", set())),
+        "titles": sorted(inventory.get("titles", set())),
+        "slugs": sorted(inventory.get("slugs", set())),
+        "posts": inventory.get("posts", []),
+    }
+    try:
+        with open(SITE_KEYWORD_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump({"fetched_at": time.time(), "inventory": serializable}, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+    return serializable
+
+
+def get_site_keyword_inventory(force_refresh=False):
+    if not force_refresh:
+        cached = _read_site_keyword_cache()
+        if cached:
+            return cached
+
+    inventory = _build_local_inventory()
+    if not config.WP_URL or not config.WP_USERNAME or not config.WP_APP_PASSWORD:
+        return _write_site_keyword_cache(inventory)
+
+    page = 1
+    while page <= 20:
+        try:
+            response = requests.get(
+                f"{API_BASE}/posts",
+                params={
+                    "status": "publish",
+                    "context": "edit",
+                    "per_page": 100,
+                    "page": page,
+                    "_fields": "id,slug,title,link,meta",
+                },
+                auth=AUTH,
+                headers=HEADERS,
+                timeout=TIMEOUT,
+            )
+        except Exception as e:
+            logger.warning(f"  Could not refresh published keyword inventory from WordPress: {e}")
+            break
+
+        if response.status_code != 200:
+            logger.warning(f"  WordPress keyword inventory fetch returned HTTP {response.status_code}")
+            break
+
+        posts = _safe_json(response) or []
+        if not posts:
+            break
+
+        for post in posts:
+            meta = post.get("meta") if isinstance(post.get("meta"), dict) else {}
+            title_text = _normalize_keywordish((post.get("title") or {}).get("rendered", ""))
+            slug_text = _normalize_keywordish((post.get("slug") or "").replace("-", " "))
+            focus_keyword = _normalize_keywordish(meta.get("rank_math_focus_keyword", ""))
+            if title_text:
+                inventory["titles"].add(title_text)
+            if slug_text:
+                inventory["slugs"].add(slug_text)
+            if focus_keyword:
+                inventory["keywords"].add(focus_keyword)
+            inventory["posts"].append({
+                "id": post.get("id"),
+                "title": (post.get("title") or {}).get("rendered", ""),
+                "slug": post.get("slug", ""),
+                "focus_keyword": meta.get("rank_math_focus_keyword", ""),
+                "url": post.get("link", ""),
+            })
+
+        if len(posts) < 100:
+            break
+        page += 1
+
+    return _write_site_keyword_cache(inventory)
+
+
+def find_published_topic_match(topic_title="", matched_keyword="", slug=""):
+    inventory = get_site_keyword_inventory()
+    normalized_keyword = _normalize_keywordish(matched_keyword)
+    normalized_title = _normalize_keywordish(topic_title)
+    normalized_slug = _normalize_keywordish((slug or "").replace("-", " "))
+
+    if normalized_keyword and normalized_keyword in set(inventory.get("keywords", [])):
+        return {"reason": "focus keyword", "value": matched_keyword.strip()}
+    if normalized_title and normalized_title in set(inventory.get("titles", [])):
+        return {"reason": "title", "value": topic_title.strip()}
+    if normalized_slug and normalized_slug in set(inventory.get("slugs", [])):
+        return {"reason": "slug", "value": slug.strip()}
+    return None
+
+
+def topic_already_published(topic_title="", matched_keyword="", slug=""):
+    return find_published_topic_match(topic_title=topic_title, matched_keyword=matched_keyword, slug=slug) is not None
+
+
 def create_post(article, featured_image_path=None, status=None):
     """
     Create a WordPress post from an article dict.
@@ -214,6 +369,7 @@ def create_post(article, featured_image_path=None, status=None):
                             article.get("title", ""),
                             article.get("slug", ""),
                             published_at=datetime.utcnow().isoformat(),
+                            focus_keyword=article.get("matched_keyword", "") or article.get("focus_keyword", ""),
                         )
                     except Exception as e:
                         logger.warning(f"  Could not add published post for internal links: {e}")
@@ -572,6 +728,7 @@ def update_post_status(post_id, status="publish"):
                             title,
                             slug,
                             published_at=datetime.utcnow().isoformat(),
+                            focus_keyword=article.get("matched_keyword", "") or article.get("focus_keyword", ""),
                         )
                 except Exception as e:
                     logger.warning(f"  Could not add published post for internal links from draft update: {e}")

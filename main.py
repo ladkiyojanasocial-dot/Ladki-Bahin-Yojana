@@ -37,7 +37,7 @@ from notifications.telegram_bot import (
 )
 from database.db import get_connection, cleanup_old_data, mark_notified, record_notification, save_topic_to_cache, get_topic_from_cache, mark_content_generated, mark_content_published
 from writer.article_generator import generate_article
-from publisher.wordpress_client import create_post
+from publisher.wordpress_client import create_post, find_published_topic_match
 from publisher.image_handler import generate_featured_image
 from gemini_client import generate_content_with_fallback
 
@@ -272,14 +272,39 @@ def run_scan():
     except Exception as e:
         logger.error(f"Coverage planner failed: {e}")
 
+    duplicate_topics = []
+    filtered_topics = []
+    for topic in trending_topics:
+        published_match = find_published_topic_match(
+            topic_title=topic.get("topic", ""),
+            matched_keyword=topic.get("matched_keyword", ""),
+            slug=topic.get("slug", ""),
+        )
+        if published_match:
+            duplicate_topics.append((topic, published_match))
+            logger.info(
+                "   Skipping already-published topic '%s' because its %s already exists: %s",
+                topic.get("topic", "")[:80],
+                published_match.get("reason", "keyword"),
+                published_match.get("value", ""),
+            )
+            continue
+        filtered_topics.append(topic)
+    trending_topics = filtered_topics
+    if duplicate_topics:
+        logger.info(
+            "   Skipped %s already-published topic(s) based on website history",
+            len(duplicate_topics),
+        )
+
     if not trending_topics:
-        logger.info("âœ… No new trending topics detected this cycle.")
+        logger.info("No new trending topics detected this cycle.")
         # Always send a scan summary so user knows the agent is working
         send_simple_message(
-            f"ðŸ“Š Scan complete ({datetime.now().strftime('%H:%M UTC')})\n"
+            f"Scan complete ({datetime.now().strftime('%H:%M UTC')})\n"
             f"Stories found: {len(all_stories)}\n"
             f"Trending topics: 0\n"
-            f"No alerts this cycle â€” all quiet."
+            f"No alerts this cycle - all quiet."
         )
         return 0
 
@@ -593,6 +618,19 @@ def _handle_write_article(topic_hash=None):
         send_simple_message("âš ï¸ No trending topics found in memory or database. Wait for the next scan.")
         return
 
+    published_match = find_published_topic_match(
+        topic_title=topic.get("topic", ""),
+        matched_keyword=topic.get("matched_keyword", ""),
+        slug=topic.get("slug", ""),
+    )
+    if published_match:
+        send_simple_message(
+            "Skipping this topic because its "
+            f"{published_match.get('reason')} is already published on the site: "
+            f"{published_match.get('value', '')}"
+        )
+        return
+
     _article_attempted_this_run = True
 
     logger.info(f"ðŸ“ Generating article for: {topic.get('topic', 'Unknown')}")
@@ -702,6 +740,19 @@ def _handle_approve(status="draft", bypass_quality_gate=False):
         _publish_in_progress = False
         return
 
+    already_published = find_published_topic_match(
+        topic_title=_pending_article.get("title", ""),
+        matched_keyword=_pending_article.get("matched_keyword", "") or _pending_article.get("focus_keyword", ""),
+        slug=_pending_article.get("slug", ""),
+    )
+    if already_published:
+        send_simple_message(
+            "Publish stopped because this article matches an existing published "
+            f"{already_published.get('reason')}: {already_published.get('value', '')}"
+        )
+        _publish_in_progress = False
+        return
+
     try:
         result = create_post(
             _pending_article,
@@ -719,6 +770,7 @@ def _handle_approve(status="draft", bypass_quality_gate=False):
                     _pending_article["title"],
                     _pending_article.get("slug", ""),
                     published_at=datetime.utcnow().isoformat(),
+                    focus_keyword=_pending_article.get("matched_keyword", "") or _pending_article.get("focus_keyword", ""),
                 )
             except Exception:
                 pass

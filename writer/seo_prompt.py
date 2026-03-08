@@ -149,7 +149,7 @@ def get_outbound_links_for_prompt(source_texts):
     return combined[:5]
 
 
-def add_published_post(post_url, title, slug="", published_at=""):
+def add_published_post(post_url, title, slug="", published_at="", focus_keyword=""):
     if not post_url or not title:
         return
     post_url = (post_url or "").strip().rstrip("/")
@@ -167,10 +167,17 @@ def add_published_post(post_url, title, slug="", published_at=""):
             "url": post_url,
             "title": (title or "").strip()[:200],
             "slug": (slug or "").strip()[:100],
+            "focus_keyword": (focus_keyword or "").strip()[:200],
             "published_at": (published_at or "")[:40],
         })
         with open(PUBLISHED_POSTS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        inventory_cache = os.path.join(os.path.dirname(os.path.dirname(__file__)), "site_keyword_inventory.json")
+        if os.path.exists(inventory_cache):
+            try:
+                os.remove(inventory_cache)
+            except OSError:
+                pass
     except Exception:
         pass
 

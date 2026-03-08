@@ -12,3 +12,4 @@ test_output.txt
 test_results.log
 deploy/*.key
 newsapi_backoff.json
+site_keyword_inventory.json
