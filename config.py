@@ -60,7 +60,31 @@ ALLOWED_CATEGORIES = [
 
 # ── Required Keyword Phrases ─────────────────────────────────────────────────
 # Only topics whose keyword or title contains one of these phrases will be accepted.
-REQUIRED_KEYWORD_PHRASES = ["installment date", "payment date"]
+REQUIRED_KEYWORD_PHRASES = [
+    "installment date", "payment date", "installment released",
+    "instalment date", "launch date", "yojana update", "ekyc",
+    "release date", "installment expected date", "installment", "yojana",
+]
+
+# ── News Site Monitoring ──────────────────────────────────────────────────────
+# Target news/blog sites to monitor. If a keyword appears on >= NEWS_SITE_MIN_COVERAGE
+# of these sites, it gets a high-confidence recommendation boost.
+NEWS_MONITOR_SITES = [
+    "news18.com",
+    "economictimes.indiatimes.com",
+    "business-standard.com",
+    "saamtv.com",
+    "zeenews.india.com",
+    "indianexpress.com",
+    "navbharattimes.indiatimes.com",
+    "ndtv.com",
+    "webdunia.com",
+    "amarujala.com",
+    "goodreturns.in",
+    "livemint.com",
+    "newsonair.gov.in",
+]
+NEWS_SITE_MIN_COVERAGE = 3
 
 # RSS Feeds
 RSS_FEEDS = {
@@ -253,6 +277,14 @@ CONTENT_IDEAS = [
     # Financial Inclusion
     {"topic": "Jan Dhan Yojana Payment Date 2026", "matched_keyword": "Jan Dhan Yojana Payment Date"},
     {"topic": "Sukanya Samriddhi Yojana Payment Date 2026", "matched_keyword": "Sukanya Samriddhi Yojana Payment Date"},
+    # Multilingual (Hindi)
+    {"topic": "लाडली बहना योजना 33वीं किस्त तारीख 2026", "matched_keyword": "लाडली बहना योजना किस्त तारीख"},
+    {"topic": "पीएम किसान 23वीं किस्त तारीख 2026", "matched_keyword": "पीएम किसान किस्त तारीख"},
+    {"topic": "महतारी वंदन योजना किस्त तारीख 2026", "matched_keyword": "महतारी वंदन योजना किस्त"},
+    {"topic": "सुभद्रा योजना 6वीं किस्त तारीख 2026", "matched_keyword": "सुभद्रा योजना किस्त तारीख"},
+    # Multilingual (Marathi)
+    {"topic": "लाडकी बहीण योजना 21वा हप्ता तारीख 2026", "matched_keyword": "लाडकी बहीण योजना हप्ता तारीख"},
+    {"topic": "नमो शेतकरी योजना 9वा हप्ता तारीख 2026", "matched_keyword": "नमो शेतकरी योजना हप्ता"},
 ]
 
 # Detection Settings
