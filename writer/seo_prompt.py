@@ -1,4 +1,4 @@
-﻿"""
+"""
 SEO Prompt Template - Master prompt used for Gemini article generation.
 Enforces SEO best practices, your site's editorial style, Kadence block HTML, and internal linking.
 """
@@ -7,55 +7,50 @@ import json
 from urllib.parse import urlparse
 from detection.scheme_registry import get_category_slug_for_text, get_authority_url_for_text
 
-SCHEME_CATEGORY_SLUGS = [
-    "ladli-behna-yojana", "majhi-ladki-bahin-yojana", "subhadra-yojana",
-    "gruha-lakshmi-yojana", "mahtari-vandan-yojana", "kanyashree-prakalpa",
-    "ladli-laxmi-yojana", "mukhyamantri-kanya-utthan-yojana",
-    "beti-bachao-beti-padhao", "sukanya-samriddhi-yojana",
-    "pradhan-mantri-matru-vandana-yojana", "ujjwala-yojana",
-    "mahila-samman-savings-certificate", "step-scheme-women",
-    "one-stop-centre-scheme", "working-women-hostel-scheme",
-    "lakhpati-didi-scheme", "namo-drone-didi-scheme",
+# Allowed WordPress categories — posts are assigned to one of these only
+ALLOWED_CATEGORIES = [
+    "Important Pages",
+    "Installment Update",
+    "Other Government Schemes",
+    "Uncategorized",
 ]
-CATEGORY_MAPPING = SCHEME_CATEGORY_SLUGS + ["news"]
+CATEGORY_MAPPING = ALLOWED_CATEGORIES
 
-KEYWORDS_TO_CATEGORY = [
-    (["ladli behna", "ladli bahan"], "ladli-behna-yojana"),
-    (["majhi ladki bahin", "ladki bahin yojana"], "majhi-ladki-bahin-yojana"),
-    (["subhadra yojana"], "subhadra-yojana"),
-    (["gruha lakshmi", "gruhalakshmi"], "gruha-lakshmi-yojana"),
-    (["mahtari vandan", "mahatari vandan"], "mahtari-vandan-yojana"),
-    (["kanyashree"], "kanyashree-prakalpa"),
-    (["ladli laxmi"], "ladli-laxmi-yojana"),
-    (["kanya utthan"], "mukhyamantri-kanya-utthan-yojana"),
-    (["beti bachao beti padhao", "bbbp"], "beti-bachao-beti-padhao"),
-    (["sukanya samriddhi", "ssy"], "sukanya-samriddhi-yojana"),
-    (["matru vandana", "pmmvy"], "pradhan-mantri-matru-vandana-yojana"),
-    (["ujjwala", "pmuy"], "ujjwala-yojana"),
-    (["mahila samman", "mssc"], "mahila-samman-savings-certificate"),
-    (["step scheme"], "step-scheme-women"),
-    (["one stop centre", "sakhi centre"], "one-stop-centre-scheme"),
-    (["working women hostel"], "working-women-hostel-scheme"),
-    (["lakhpati didi"], "lakhpati-didi-scheme"),
-    (["namo drone didi", "drone didi"], "namo-drone-didi-scheme"),
+# Keywords/phrases that map topics to the "Installment Update" category
+_INSTALLMENT_KEYWORDS = [
+    "installment", "instalment", "kist", "payment release", "payment update",
+    "amount credited", "payment date", "next installment", "kist date",
+    "installment date", "hpta", "किस्त", "हप्ता",
+]
+
+# Keywords/phrases that map topics to "Important Pages" (guides, eKYC, status, eligibility)
+_IMPORTANT_PAGE_KEYWORDS = [
+    "ekyc", "e-kyc", "kyc", "status check", "how to apply", "eligibility",
+    "documents required", "application process", "online apply", "portal",
+    "registration", "beneficiary list", "apply online", "calculator",
+    "last date", "deadline", "guide", "website",
 ]
 
 
 def get_category_for_topic(topic_title, matched_keyword=""):
-    """Return WordPress category slug from master scheme registry; fallback to static mapping."""
+    """Return one of the 4 allowed WordPress categories based on topic intent."""
     if not topic_title and not matched_keyword:
-        return "news"
-
-    slug = get_category_slug_for_text(topic_title, matched_keyword)
-    if slug and slug != "news":
-        return slug
+        return "Other Government Schemes"
 
     combined = f" {((topic_title or '') + ' ' + (matched_keyword or '')).lower()} "
-    for phrases, static_slug in KEYWORDS_TO_CATEGORY:
-        for phrase in phrases:
-            if phrase.lower() in combined:
-                return static_slug
-    return "news"
+
+    # Check for installment-related topics first
+    for phrase in _INSTALLMENT_KEYWORDS:
+        if phrase.lower() in combined:
+            return "Installment Update"
+
+    # Check for important-page topics (guides, eKYC, status, etc.)
+    for phrase in _IMPORTANT_PAGE_KEYWORDS:
+        if phrase.lower() in combined:
+            return "Important Pages"
+
+    # Default: all government scheme topics go here
+    return "Other Government Schemes"
 
 
 BASE_URL = os.getenv("WP_URL", "https://womenempowermentportal.org").rstrip("/")
@@ -348,7 +343,7 @@ URL: {src.get('url', '')}
     template_rules = get_template_rules(template_name, primary_keyword)
     language_rules = get_language_rules(target_lang)
 
-    prompt = f"""You are a world-class SEO strategist and Indian women welfare journalist for {BASE_URL}.
+    prompt = f"""You are a world-class SEO strategist and Indian government scheme journalist for {BASE_URL}.
 Your mission is to create a highly useful article that ranks in search, answers questions directly, and is suitable for AI overviews, answer engines, and generative search experiences.
 
 TASK: Write a complete, publish-ready guide about: {topic_title}
@@ -426,7 +421,7 @@ CRITICAL: Include at least 1 government outbound source link in the final articl
 3. META_DESCRIPTION: 140 to 155 characters. Must contain the PRIMARY KEYWORD naturally and a strong hook.
 4. SLUG: 3 to 6 words, lowercase, hyphens only, max 50 chars.
 5. TAGS: Exactly 5 tags, comma-separated.
-6. CATEGORY: ONE slug from: {cat_mapping_str}. Use "news" only if topic does not match a scheme.
+6. CATEGORY: ONE category from: {cat_mapping_str}. Choose based on content type: "Installment Update" for payment/kist topics, "Important Pages" for guides/eKYC/status, "Other Government Schemes" for general scheme topics, "Uncategorized" only if nothing else fits.
 7. LANG: The 2-letter ISO language code of this article's text. Use exactly {target_lang}.
 8. ---CONTENT_START---
 - Start with a short direct-answer intro of 2 to 4 sentences.
@@ -470,8 +465,8 @@ LANG: {target_lang}
 
 def build_image_prompt(topic_title, article_content_snippet=""):
     """Build a clear, editorial-style prompt for AI image generation."""
-    prompt = f"""Professional editorial photograph for an Indian women empowerment news article. Topic: {topic_title}.
-Scene: Confident Indian women in a community or administrative setting, natural daylight, photorealistic.
+    prompt = f"""Professional editorial photograph for an Indian government scheme news article. Topic: {topic_title}.
+Scene: Indian citizens in a community or administrative setting engaging with government services, natural daylight, photorealistic.
 Style: High-quality stock photo, documentary style, no visible text overlays.
 Rules: No text, no logos, no watermarks, no cartoons. Landscape orientation, 16:9 suitable for featured image."""
 

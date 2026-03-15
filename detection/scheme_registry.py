@@ -1,5 +1,6 @@
-﻿"""
-Master registry for India women empowerment schemes and reusable coverage logic.
+"""
+Master registry for Indian government schemes and reusable coverage logic.
+Covers central and state schemes for women, farmers, housing, health, and welfare.
 """
 from datetime import datetime
 import re
@@ -7,6 +8,7 @@ import re
 
 # Central + state scheme registry used by detection, categorization, and coverage planning.
 SCHEME_REGISTRY = [
+    # ── Women Welfare ──
     {"id": "ladli_behna", "name": "Ladli Behna Yojana", "level": "state", "state": "Madhya Pradesh", "priority": 10,
      "category_slug": "ladli-behna-yojana", "aliases": ["ladli bahan", "mukhyamantri ladli behna"]},
     {"id": "majhi_ladki_bahin", "name": "Majhi Ladki Bahin Yojana", "level": "state", "state": "Maharashtra", "priority": 10,
@@ -43,6 +45,55 @@ SCHEME_REGISTRY = [
      "category_slug": "lakhpati-didi-scheme", "aliases": ["shg lakhpati didi", "women shg income scheme"]},
     {"id": "namo_drone_didi", "name": "Namo Drone Didi", "level": "central", "state": "", "priority": 6,
      "category_slug": "namo-drone-didi-scheme", "aliases": ["drone didi", "women drone scheme"]},
+    {"id": "laxmi_bhandar", "name": "Laxmi Bhandar", "level": "state", "state": "West Bengal", "priority": 8,
+     "category_slug": "laxmi-bhandar", "aliases": ["lakshmir bhandar", "wb women scheme"]},
+    {"id": "lado_laxmi", "name": "Lado Laxmi Yojana", "level": "state", "state": "Rajasthan", "priority": 8,
+     "category_slug": "lado-laxmi-yojana", "aliases": ["deen dayal lado lakshmi", "lado laxmi rajasthan"]},
+    {"id": "mahila_samman_delhi", "name": "Mukhyamantri Mahila Samman Yojana", "level": "state", "state": "Delhi", "priority": 7,
+     "category_slug": "mukhyamantri-mahila-samman-yojana", "aliases": ["mahila samman delhi"]},
+
+    # ── Agriculture / Farmer ──
+    {"id": "pm_kisan", "name": "PM Kisan Samman Nidhi", "level": "central", "state": "", "priority": 10,
+     "category_slug": "pm-kisan", "aliases": ["pm kisan", "pm kisan yojana", "kisan samman nidhi"],
+     "authority_url": "https://pmkisan.gov.in/"},
+    {"id": "pm_fasal_bima", "name": "PM Fasal Bima Yojana", "level": "central", "state": "", "priority": 7,
+     "category_slug": "pm-fasal-bima", "aliases": ["pmfby", "crop insurance scheme"]},
+    {"id": "kcc", "name": "Kisan Credit Card", "level": "central", "state": "", "priority": 7,
+     "category_slug": "kisan-credit-card", "aliases": ["kcc", "farmer credit card"]},
+    {"id": "rythu_bharosa", "name": "Rythu Bharosa", "level": "state", "state": "Telangana", "priority": 9,
+     "category_slug": "rythu-bharosa", "aliases": ["rythu bharosa telangana", "telangana farmer scheme"]},
+    {"id": "rythu_bandhu", "name": "Rythu Bandhu", "level": "state", "state": "Telangana", "priority": 9,
+     "category_slug": "rythu-bandhu", "aliases": ["rythu bandhu telangana"]},
+    {"id": "namo_shetkari", "name": "Namo Shetkari Yojana", "level": "state", "state": "Maharashtra", "priority": 9,
+     "category_slug": "namo-shetkari-yojana", "aliases": ["namo shetkari maha sanman", "maharashtra farmer"]},
+    {"id": "krishak_bandhu", "name": "Krishak Bandhu", "level": "state", "state": "West Bengal", "priority": 8,
+     "category_slug": "krishak-bandhu", "aliases": ["krishak bandhu west bengal", "wb farmer scheme"]},
+    {"id": "cm_kisan_kalyan", "name": "CM Kisan Kalyan Yojana", "level": "state", "state": "Madhya Pradesh", "priority": 8,
+     "category_slug": "cm-kisan-kalyan", "aliases": ["mukhyamantri kisan kalyan yojana", "mp kisan kalyan"]},
+    {"id": "annadata_sukhibhava", "name": "Annadata Sukhibhava", "level": "state", "state": "Andhra Pradesh", "priority": 8,
+     "category_slug": "annadata-sukhibhava", "aliases": ["annadata sukhibhava ap"]},
+    {"id": "ysr_rythu_bharosa", "name": "YSR Rythu Bharosa", "level": "state", "state": "Andhra Pradesh", "priority": 8,
+     "category_slug": "ysr-rythu-bharosa", "aliases": ["ysr rythu bharosa ap", "ap farmer scheme"]},
+    {"id": "kalia", "name": "Kalia Yojana", "level": "state", "state": "Odisha", "priority": 8,
+     "category_slug": "kalia-yojana", "aliases": ["kalia yojana odisha", "odisha farmer scheme"]},
+
+    # ── Housing ──
+    {"id": "pm_awas", "name": "PM Awas Yojana", "level": "central", "state": "", "priority": 9,
+     "category_slug": "pm-awas-yojana", "aliases": ["pmay", "awas yojana gramin", "awas yojana urban"],
+     "authority_url": "https://pmaymis.gov.in/"},
+
+    # ── Health ──
+    {"id": "ayushman_bharat", "name": "Ayushman Bharat", "level": "central", "state": "", "priority": 8,
+     "category_slug": "ayushman-bharat", "aliases": ["pmjay", "ayushman card"],
+     "authority_url": "https://pmjay.gov.in/"},
+
+    # ── Financial Inclusion ──
+    {"id": "jan_dhan", "name": "Jan Dhan Yojana", "level": "central", "state": "", "priority": 7,
+     "category_slug": "jan-dhan-yojana", "aliases": ["pmjdy", "jan dhan account"]},
+
+    # ── Solar / Energy ──
+    {"id": "pm_surya_ghar", "name": "PM Surya Ghar Yojana", "level": "central", "state": "", "priority": 7,
+     "category_slug": "pm-surya-ghar", "aliases": ["rooftop solar", "surya ghar"]},
 ]
 
 DEFAULT_ANGLES = [

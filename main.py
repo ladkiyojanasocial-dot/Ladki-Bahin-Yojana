@@ -1,4 +1,4 @@
-﻿"""
+"""
 Women Empowerment Alerts Agent â€” Main Entry Point
 
 Orchestrates the detection â†’ notification â†’ writing â†’ publishing pipeline.
@@ -104,6 +104,54 @@ def load_pending_state():
     except Exception as e:
         logger.error(f"Failed to load pending state: {e}")
     return False
+
+
+def load_used_keywords():
+    """Load the list of already-used target keywords from disk."""
+    try:
+        kw_file = getattr(config, "USED_KEYWORDS_FILE", "used_keywords.json")
+        if os.path.exists(kw_file):
+            with open(kw_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return [k.strip().lower() for k in data.get("used_keywords", []) if k.strip()]
+    except Exception as e:
+        logger.error(f"Failed to load used keywords: {e}")
+    return []
+
+
+def save_used_keyword(keyword):
+    """Append a new target keyword to the used-keywords list on disk."""
+    keyword = (keyword or "").strip()
+    if not keyword:
+        return
+    try:
+        kw_file = getattr(config, "USED_KEYWORDS_FILE", "used_keywords.json")
+        data = {"used_keywords": []}
+        if os.path.exists(kw_file):
+            with open(kw_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        existing = data.get("used_keywords", [])
+        # Case-insensitive dedup
+        existing_lower = {k.strip().lower() for k in existing}
+        if keyword.lower() not in existing_lower:
+            existing.append(keyword)
+            data["used_keywords"] = existing
+            with open(kw_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            logger.info(f"Added '{keyword}' to used keywords list ({len(existing)} total)")
+    except Exception as e:
+        logger.error(f"Failed to save used keyword: {e}")
+
+
+
+def _topic_matches_required_phrases(topic):
+    """Check if topic keyword or title contains a required phrase (e.g. 'installment date', 'payment date').
+    Returns True if no filter is configured or if the topic matches."""
+    required = getattr(config, "REQUIRED_KEYWORD_PHRASES", None)
+    if not required:
+        return True  # No filter configured, allow all
+    combined = ((topic.get("matched_keyword") or "") + " " + (topic.get("topic") or "")).lower()
+    return any(phrase.lower() in combined for phrase in required)
 
 # â€”â€” Logging Setup â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”
 logging.basicConfig(
@@ -293,6 +341,26 @@ def run_scan():
             "   Skipped %s already-published topic(s) based on website history",
             len(duplicate_topics),
         )
+
+    # Filter to only topics matching required keyword phrases (e.g. "installment date", "payment date")
+    required_phrases = getattr(config, "REQUIRED_KEYWORD_PHRASES", None)
+    if required_phrases:
+        phrase_filtered = []
+        phrase_rejected = 0
+        for topic in trending_topics:
+            if _topic_matches_required_phrases(topic):
+                phrase_filtered.append(topic)
+            else:
+                phrase_rejected += 1
+                logger.debug(
+                    "   Filtered out topic '%s' — keyword '%s' does not contain required phrases",
+                    topic.get("topic", "")[:60],
+                    topic.get("matched_keyword", ""),
+                )
+        trending_topics = phrase_filtered
+        if phrase_rejected:
+            logger.info(f"   Filtered out {phrase_rejected} topic(s) not matching required phrases: {required_phrases}")
+
 
     if not trending_topics:
         logger.info("No new trending topics detected this cycle.")
@@ -615,6 +683,26 @@ def _handle_write_article(topic_hash=None):
         send_simple_message("âš ï¸ No trending topics found in memory or database. Wait for the next scan.")
         return
 
+    # Check if this keyword has already been used in a previous post/page
+    used_kws = load_used_keywords()
+    topic_keyword = (topic.get("matched_keyword") or "").strip()
+    if topic_keyword and topic_keyword.lower() in used_kws:
+        send_simple_message(
+            f"\u26a0\ufe0f Skipping topic: the target keyword '{topic_keyword}' has already been used in a previous post/page."
+        )
+        logger.info(f"Skipping topic \u2014 keyword '{topic_keyword}' already in used_keywords list")
+        return
+
+    # Check if topic matches required keyword phrases (installment date / payment date)
+    if not _topic_matches_required_phrases(topic):
+        required = getattr(config, "REQUIRED_KEYWORD_PHRASES", [])
+        send_simple_message(
+            f"\u26a0\ufe0f Skipping topic: keyword '{topic_keyword}' does not contain required phrases: {required}"
+        )
+        logger.info(f"Skipping topic \u2014 keyword '{topic_keyword}' does not match required phrases")
+        return
+
+
     published_match = find_existing_keyword_target(topic.get("matched_keyword", ""))
     if published_match:
         send_simple_message(
@@ -767,6 +855,10 @@ def _handle_approve(status="draft", bypass_quality_gate=False):
                 )
             except Exception:
                 pass
+            # Track the target keyword so it is never reused
+            target_kw = _pending_article.get("matched_keyword", "") or _pending_article.get("focus_keyword", "")
+            if target_kw:
+                save_used_keyword(target_kw)
 
             try:
                 if _pending_article.get("scheme_id") and _pending_article.get("content_angle"):

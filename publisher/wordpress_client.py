@@ -1,4 +1,4 @@
-﻿"""
+"""
 WordPress Client - Handles all WordPress REST API interactions:
 creating posts, uploading media, setting categories/tags,
 and injecting RankMath SEO fields.
@@ -609,10 +609,26 @@ def upload_media(file_path, title=""):
 
 
 def get_or_create_category(name):
-    """Get category ID by name, creating it if it doesn't exist."""
+    """Get category ID by name. Only searches existing categories — never creates new ones.
+    Falls back to 'Uncategorized' if the requested category is not found."""
     name = re.sub(r'[*_#`]', '', name).strip()
 
+    # Validate against allowed categories if configured
+    allowed = getattr(config, "ALLOWED_CATEGORIES", None)
+    if allowed:
+        # Map the requested name to the closest allowed category
+        name_lower = name.lower()
+        matched = None
+        for cat in allowed:
+            if cat.lower() == name_lower:
+                matched = cat
+                break
+        if not matched:
+            logger.info(f"  Category '{name}' not in allowed list, falling back to 'Uncategorized'")
+            name = "Uncategorized"
+
     try:
+        # Try slug-based lookup first
         response = requests.get(
             f"{API_BASE}/categories",
             params={"slug": name, "per_page": 1},
@@ -626,9 +642,10 @@ def get_or_create_category(name):
             if categories:
                 return categories[0]["id"]
 
+        # Try name-based search
         response = requests.get(
             f"{API_BASE}/categories",
-            params={"search": name, "per_page": 5},
+            params={"search": name, "per_page": 10},
             auth=AUTH,
             headers=HEADERS,
             timeout=TIMEOUT,
@@ -637,28 +654,16 @@ def get_or_create_category(name):
         if response.status_code == 200:
             categories = _safe_json(response) or []
             for cat in categories:
-                if cat["name"].lower() == name.lower() or cat["slug"].lower() == name.lower():
+                if cat["name"].lower() == name.lower() or cat["slug"].lower() == name.lower().replace(" ", "-"):
                     return cat["id"]
-
-        create_name = "News" if name.lower() == "news" else name
-        response = requests.post(
-            f"{API_BASE}/categories",
-            json={"name": create_name, "slug": name},
-            auth=AUTH,
-            headers=HEADERS,
-            timeout=TIMEOUT,
-        )
-
-        if response.status_code in (200, 201):
-            cat_id = (_safe_json(response) or {}).get("id")
-            logger.info(f"  Created category '{create_name}' (ID: {cat_id})")
-            return cat_id
 
     except Exception as e:
         logger.error(f"  Category error for '{name}': {e}")
 
-    if name != "News":
-        return get_or_create_category("News")
+    # If nothing found and we didn't already try Uncategorized, try it as last resort
+    if name.lower() != "uncategorized":
+        logger.info(f"  Category '{name}' not found on site, trying 'Uncategorized'")
+        return get_or_create_category("Uncategorized")
     return None
 
 

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Article Generator â€” Uses Gemini to write SEO-optimized articles
 from source material gathered by the source fetcher.
 """
@@ -92,12 +92,14 @@ def _ensure_article_taxonomy(article, topic):
         final_tags.append(filler)
         seen.add(filler.lower())
     article["tags"] = final_tags
-    if not article.get("category") or article.get("category") == "uncategorized":
+    # Assign category from the 4 allowed categories based on topic intent
+    current_cat = (article.get("category") or "").strip().lower()
+    if not current_cat or current_cat in ("uncategorized", "news"):
         article["category"] = get_category_for_topic(topic.get("topic", ""), keyword)
     return article
 
 
-def _ensure_outbound_source_link(article, source_texts):
+def _ensure_outbound_source_link(article, source_texts, topic):
     full_content = article.get("full_content") or article.get("content_html") or ""
     if re.search(r'<a\s+[^>]*href="https?://', full_content, flags=re.IGNORECASE):
         return article
@@ -123,6 +125,123 @@ def _ensure_outbound_source_link(article, source_texts):
     if article.get("content"):
         article["content"] = article["content"].rstrip() + f"\n\nOfficial source: {chosen['url']}"
     return article
+
+
+# ── Contextual Hook (from Fifa-Alerts-App reference) ──
+_BANNED_OPENERS = (
+    "in this article", "this article", "let us", "let's", "we will",
+    "here is", "here are", "in this guide", "welcome to",
+    "today we", "in today's",
+)
+
+
+def _contains_keyword(text, keyword):
+    """Check if text contains the keyword (case-insensitive, word-boundary-aware)."""
+    if not keyword or not text:
+        return False
+    return keyword.lower() in text.lower()
+
+
+def _clean_topic_label(topic_title):
+    """Extract a clean entity/action from the topic title."""
+    if not topic_title:
+        return ""
+    # Remove common prefixes
+    label = re.sub(r'^(?:Trending|Rising search|Breaking):?\s*', '', topic_title, flags=re.IGNORECASE).strip()
+    return label
+
+
+def _build_contextual_hook(primary_keyword, topic_title, primary_entity=""):
+    """Build an entity-rich, search-intent-satisfying intro hook."""
+    entity = primary_entity or _clean_topic_label(topic_title) or primary_keyword
+    action = _clean_topic_label(topic_title)
+    if not action or action.lower() == entity.lower():
+        action = f"{entity} has emerged as a major update for beneficiaries"
+    else:
+        if len(action) > 80:
+            action = action[:77].rsplit(" ", 1)[0]
+
+    focus = primary_keyword or entity
+    hook = (
+        f"<p>{entity} is at the center of this {primary_keyword} development. "
+        f"{action}, with immediate implications for beneficiaries, applicants, and the wider welfare landscape.</p>\n\n"
+        f"<h2>Why this matters</h2>\n"
+        f"<p>Beyond the headline, {focus} could shape beneficiary expectations, eligibility decisions, and the wider "
+        f"government scheme conversation. The immediate effect will depend on how the update develops, but it already "
+        f"gives applicants and stakeholders a clearer signal about what to watch next.</p>\n"
+    )
+    return hook
+
+
+def _ensure_strong_opening(content, primary_keyword, topic_title, primary_entity=""):
+    """Ensure the first paragraph contains the keyword and is strong enough.
+    If not, prepend a contextual hook."""
+    import html
+    if not content:
+        return content
+
+    first_paragraph = re.search(r'(<p[^>]*>)(.*?)(</p>)', content, re.DOTALL | re.IGNORECASE)
+    if not first_paragraph:
+        hook = _build_contextual_hook(primary_keyword, topic_title, primary_entity)
+        return hook + content
+
+    first_text = html.unescape(re.sub(r'<[^>]+>', '', first_paragraph.group(2))).strip()
+    word_count = len(first_text.split())
+    is_too_short = word_count < 18
+    lacks_keyword = not _contains_keyword(first_text, primary_keyword)
+    weak_open = first_text.lower().startswith(_BANNED_OPENERS)
+
+    if is_too_short or lacks_keyword or weak_open:
+        hook = _build_contextual_hook(primary_keyword, topic_title, primary_entity)
+        return content[:first_paragraph.start()] + hook + content[first_paragraph.start():]
+    return content
+
+
+def _strip_hallucinated_internal_links(content):
+    """Remove internal links that point to URLs not actually published on our site.
+    Replaces the <a> tag with just the anchor text."""
+    if not content:
+        return content
+
+    try:
+        from writer.seo_prompt import get_internal_links_for_prompt, BASE_URL
+        verified = get_internal_links_for_prompt()
+        valid_urls = set()
+        for item in verified:
+            url = (item.get("url") or "").strip().rstrip("/")
+            if url:
+                valid_urls.add(url)
+                valid_urls.add(url + "/")
+    except Exception:
+        return content
+
+    def _normalize_url(href):
+        return href.strip().rstrip("/")
+
+    def _replace_link(match):
+        href = match.group(1)
+        anchor_text = match.group(2)
+        href_clean = href.strip()
+
+        # External links are fine, only check our domain
+        base_domain = BASE_URL.replace("https://", "").replace("http://", "").rstrip("/")
+        if base_domain not in href_clean and not href_clean.startswith("/"):
+            return match.group(0)
+
+        norm = _normalize_url(href_clean)
+        if not norm or (norm not in valid_urls and norm + "/" not in valid_urls):
+            logger.warning(f"Stripped hallucinated link: {href}")
+            return anchor_text
+
+        return match.group(0)
+
+    cleaned = re.sub(
+        r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+        _replace_link,
+        content,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    return cleaned
 
 
 def generate_article(topic, source_urls=None):
@@ -223,7 +342,16 @@ def generate_article(topic, source_urls=None):
         article["sources_used"] = [s.get("source_domain", "") for s in source_texts]
         article = _ensure_article_taxonomy(article, topic)
         article["lang"] = target_lang if target_lang in ("en", "hi", "te") else article.get("lang", "en")
-        article = _ensure_outbound_source_link(article, source_texts)
+        article = _ensure_outbound_source_link(article, source_texts, topic)
+        # Ensure strong opening with keyword and strip hallucinated internal links
+        primary_kw = topic.get("matched_keyword", "") or topic.get("topic", "")
+        if article.get("content_html"):
+            article["content_html"] = _ensure_strong_opening(
+                article["content_html"], primary_kw, topic.get("topic", "")
+            )
+            article["content_html"] = _strip_hallucinated_internal_links(article["content_html"])
+        if article.get("full_content"):
+            article["full_content"] = _strip_hallucinated_internal_links(article["full_content"])
         article["word_count"] = len((article.get("content_html") or article.get("full_content") or "").split())
         logger.info(f"  Article generated: '{article['title']}' (category: {article['category']})")
     else:

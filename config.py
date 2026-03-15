@@ -1,5 +1,5 @@
-﻿"""
-Central configuration for the Women Empowerment Alerts App.
+"""
+Central configuration for the Indian Government Scheme Alerts App.
 All settings, keywords, RSS feeds, and thresholds are defined here.
 """
 import os
@@ -46,8 +46,21 @@ WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD")
 WP_PUBLISH_WEBHOOK_URL = os.getenv("WP_PUBLISH_WEBHOOK_URL", "").strip()
 WP_PUBLISH_SECRET = os.getenv("WP_PUBLISH_SECRET", "").strip()
 APP_STATE_NAMESPACE = os.getenv("APP_STATE_NAMESPACE", "ladki-bahin-agent").strip() or "ladki-bahin-agent"
-# Optional: Unsplash API for high-quality stock photos (50 req/hr free). If set, we try Unsplash before AI image gen.
-UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "").strip() or None
+
+# Used-keywords tracking — prevents duplicate target keywords across posts/pages
+USED_KEYWORDS_FILE = os.path.join(str(_PROJECT_ROOT), "used_keywords.json")
+
+# Allowed WordPress categories — posts are assigned to one of these; no new categories are created
+ALLOWED_CATEGORIES = [
+    "Important Pages",
+    "Installment Update",
+    "Other Government Schemes",
+    "Uncategorized",
+]
+
+# ── Required Keyword Phrases ─────────────────────────────────────────────────
+# Only topics whose keyword or title contains one of these phrases will be accepted.
+REQUIRED_KEYWORD_PHRASES = ["installment date", "payment date"]
 
 # RSS Feeds
 RSS_FEEDS = {
@@ -71,8 +84,11 @@ RSS_FEEDS = {
 # Keep empty so all feeds must pass keyword filtering.
 AGRI_ONLY_FEEDS = []
 
-# Keyword Watchlists
+# ── Keyword Watchlists ────────────────────────────────────────────────────────
+# Covers ALL major Indian government schemes (central + state), not limited to women-only.
+
 CENTRAL_SCHEMES = [
+    # Women-centric
     "Beti Bachao Beti Padhao", "BBBP",
     "Sukanya Samriddhi Yojana", "SSY",
     "Pradhan Mantri Matru Vandana Yojana", "PMMVY",
@@ -85,9 +101,38 @@ CENTRAL_SCHEMES = [
     "Stand Up India Women Loan", "MUDRA Women",
     "PM Vishwakarma Women",
     "Women SHG", "Self Help Group",
+    # Agriculture / Farmer
+    "PM Kisan", "PM Kisan Samman Nidhi", "PM Kisan Yojana",
+    "PM Fasal Bima Yojana", "PMFBY",
+    "Kisan Credit Card", "KCC",
+    "PM Kisan Mandhan Yojana",
+    # Housing
+    "PM Awas Yojana", "PMAY", "Awas Yojana Gramin", "Awas Yojana Urban",
+    # Health
+    "Ayushman Bharat", "PMJAY", "Ayushman Card",
+    # Gas / Subsidy
+    "LPG Subsidy", "Ration Card", "PM Garib Kalyan",
+    # Financial Inclusion
+    "Jan Dhan Yojana", "PMJDY",
+    "Atal Pension Yojana", "APY",
+    "PM Jeevan Jyoti Bima Yojana", "PMJJBY",
+    "PM Suraksha Bima Yojana", "PMSBY",
+    # Education / Skill
+    "PM Vidya Lakshmi", "National Scholarship Portal",
+    "PM Mudra Yojana", "MUDRA Loan",
+    # Solar / Energy
+    "PM Surya Ghar Yojana", "Rooftop Solar",
+    "PM Kusum Yojana",
+    # Employment
+    "PM Rojgar Mela", "PM Vishwakarma Yojana",
+    # Others
+    "Lado Laxmi Yojana", "Deen Dayal Lado Lakshmi",
+    "Swadhar Yojana",
+    "Nari Shakti", "Women Empowerment",
 ]
 
 STATE_SCHEMES = [
+    # Women-centric state schemes
     "Ladli Behna Yojana", "Ladli Bahan",
     "Ladli Laxmi Yojana",
     "Majhi Ladki Bahin Yojana", "Mukhyamantri Majhi Ladki Bahin",
@@ -98,9 +143,32 @@ STATE_SCHEMES = [
     "Kalaignar Magalir Urimai Thogai",
     "Nanda Gaura Yojana",
     "Mukhyamantri Kanya Utthan Yojana",
+    "Laxmi Bhandar",
+    "Mukhyamantri Mahila Samman Yojana",
+    # Farmer state schemes
+    "Rythu Bharosa", "Rythu Bharosa Telangana",
+    "Rythu Bandhu", "Rythu Bandhu Telangana",
+    "Kalia Yojana", "Kalia Yojana Odisha",
+    "Namo Shetkari Yojana", "Namo Shetkari Maha Sanman",
+    "Krishak Bandhu", "Krishak Bandhu West Bengal",
+    "CM Kisan Kalyan Yojana", "Mukhyamantri Kisan Kalyan Yojana",
+    "Annadata Sukhibhava", "Annadata Sukhibhava AP",
+    "YSR Rythu Bharosa",
+    "Mukhyamantri Yuva Udyami Yojana MP",
+    # Other state welfare
+    "CM Girl Child Protection Scheme",
+    "Mukhyamantri Rajshri Yojana",
+    "Deen Dayal Lado Lakshmi Yojana",
 ]
 
-GENERAL_AGRI_KEYWORDS = [
+GENERAL_SCHEME_KEYWORDS = [
+    # Broad scheme monitoring
+    "Government Scheme", "Sarkari Yojana",
+    "Installment Date", "Payment Date", "Kist Date",
+    "Next Installment", "Payment Status", "Payment Update",
+    "Beneficiary List", "Status Check",
+    "DBT Payment", "Direct Benefit Transfer",
+    "Scheme Update", "Yojana Update",
     "Women Empowerment", "Mahila Yojana", "Mahila Kalyan",
     "Women Welfare", "Girl Child Scheme", "Women Safety Scheme",
     "Women Entrepreneurship", "Women Loan Scheme",
@@ -109,10 +177,11 @@ GENERAL_AGRI_KEYWORDS = [
     "Scholarship for Girls", "Girl Education Scheme",
     "Women Helpline", "Mahila Helpline",
     "Women Pension Scheme", "Widow Pension Women",
-    "Women Financial Assistance", "Direct Benefit Transfer Women",
+    "Women Financial Assistance",
     "Women Portal", "Mahila Portal",
     "Kanya Vivah Yojana", "Kanya Protsahan",
     "Women Startup India", "Nari Shakti",
+    "Kisan Payment", "Farmer Payment", "Farm Subsidy",
 ]
 
 EXCLUDE_KEYWORDS = [
@@ -125,7 +194,7 @@ EXCLUDE_KEYWORDS = [
 ]
 
 # Combined master list for filtering
-ALL_KEYWORDS = CENTRAL_SCHEMES + STATE_SCHEMES + GENERAL_AGRI_KEYWORDS
+ALL_KEYWORDS = CENTRAL_SCHEMES + STATE_SCHEMES + GENERAL_SCHEME_KEYWORDS
 
 # Merge master registry aliases to avoid missing schemes/topics in monitoring.
 for _kw in build_watchlist_keywords():
@@ -145,45 +214,45 @@ HIGH_VALUE_AGRI_KEYWORDS = [
     "direct benefit transfer", "DBT", "payment status",
     "loan approval", "scheme renewal",
     "subsidy amount", "subsidy rate", "interest rate",
-    "kist", "kist date", "next installment",
+    "kist", "kist date", "next installment", "payment date", "installment date",
 ]
 
+# ── Content Ideas (installment/payment date focused) ─────────────────────────
+# Every idea MUST have "installment date" or "payment date" in the topic title.
 CONTENT_IDEAS = [
-    {"topic": "Ladli Behna Yojana 2026: Eligibility and Payment Status Check", "matched_keyword": "Ladli Behna Yojana"},
-    {"topic": "Ladli Behna eKYC Update: How to Verify and Avoid Payment Hold", "matched_keyword": "Ladli Behna Yojana"},
-    {"topic": "Majhi Ladki Bahin Yojana: Registration Process and Required Documents", "matched_keyword": "Majhi Ladki Bahin Yojana"},
-    {"topic": "Majhi Ladki Bahin Installment Date 2026: Latest Update and Status", "matched_keyword": "Majhi Ladki Bahin Yojana"},
-    {"topic": "Subhadra Yojana Odisha: Who Is Eligible and How to Apply Online", "matched_keyword": "Subhadra Yojana Odisha"},
-    {"topic": "Subhadra Yojana Beneficiary List 2026: Step-by-Step Name Check", "matched_keyword": "Subhadra Yojana Odisha"},
-    {"topic": "Gruha Lakshmi Yojana Karnataka: Amount, Status, and eKYC Guide", "matched_keyword": "Gruha Lakshmi Yojana"},
-    {"topic": "Gruha Lakshmi Payment Not Received: Common Reasons and Fixes", "matched_keyword": "Gruha Lakshmi Yojana"},
-    {"topic": "Mahtari Vandan Yojana: Eligibility, Documents, and Payment Status", "matched_keyword": "Mahtari Vandan Yojana"},
-    {"topic": "Kalaignar Magalir Urimai Thogai: Monthly Benefit and Application Guide", "matched_keyword": "Kalaignar Magalir Urimai Thogai"},
-    {"topic": "Kanyashree Prakalpa 2026: Application, Renewal, and Scholarship Status", "matched_keyword": "Kanyashree Prakalpa"},
-    {"topic": "Ladli Laxmi Yojana Benefits: Full Stage-Wise Financial Support", "matched_keyword": "Ladli Laxmi Yojana"},
-    {"topic": "Mukhyamantri Kanya Utthan Yojana: Eligibility and Online Apply Steps", "matched_keyword": "Mukhyamantri Kanya Utthan Yojana"},
-    {"topic": "Nanda Gaura Yojana: Eligibility and Benefit Amount 2026", "matched_keyword": "Nanda Gaura Yojana"},
-    {"topic": "Beti Bachao Beti Padhao: Latest Guidelines and District Implementation", "matched_keyword": "Beti Bachao Beti Padhao"},
-    {"topic": "Sukanya Samriddhi Yojana Interest Rate 2026 and Account Opening Rules", "matched_keyword": "Sukanya Samriddhi Yojana"},
-    {"topic": "Pradhan Mantri Matru Vandana Yojana: Eligibility and Payment Process", "matched_keyword": "Pradhan Mantri Matru Vandana Yojana"},
-    {"topic": "PMMVY Status Check 2026: How Beneficiaries Can Track Installments", "matched_keyword": "Pradhan Mantri Matru Vandana Yojana"},
-    {"topic": "Ujjwala Yojana Refill Subsidy 2026: Latest Rules and Eligibility", "matched_keyword": "Ujjwala Yojana"},
-    {"topic": "Mahila Samman Savings Certificate: Interest Rate and Maturity Guide", "matched_keyword": "Mahila Samman Savings Certificate"},
-    {"topic": "STEP Scheme for Women: Training Courses and Enrollment Process", "matched_keyword": "STEP Scheme"},
-    {"topic": "Working Women Hostel Scheme: Who Can Apply and How to Get Admission", "matched_keyword": "Working Women Hostel"},
-    {"topic": "One Stop Centre Services: How Women Can Access Legal and Medical Help", "matched_keyword": "One Stop Centre"},
-    {"topic": "Stand Up India Women Loan: Eligibility, Interest Rate, and Documents", "matched_keyword": "Stand Up India Women Loan"},
-    {"topic": "MUDRA Loan for Women Entrepreneurs: How to Apply and Repay", "matched_keyword": "MUDRA Women"},
-    {"topic": "Women SHG Loan 2026: Interest, Repayment, and Subsidy Support", "matched_keyword": "Women SHG"},
-    {"topic": "Lakhpati Didi Scheme: How SHG Women Can Build Sustainable Income", "matched_keyword": "Lakhpati Didi"},
-    {"topic": "Namo Drone Didi Scheme: Training and Earning Opportunities for Women", "matched_keyword": "Namo Drone Didi"},
-    {"topic": "Top Women Empowerment Schemes in India 2026: Central and State List", "matched_keyword": "Women Empowerment"},
-    {"topic": "How to Check Any Women Welfare Scheme Status Online: Complete Guide", "matched_keyword": "Women Welfare"},
-    {"topic": "Women Scheme Rejected? Common Reasons and Document Correction Steps", "matched_keyword": "Mahila Yojana"},
-    {"topic": "Aadhaar and Bank Seeding for Women Schemes: Why It Matters", "matched_keyword": "Mahila Yojana"},
-    {"topic": "Best Government Schemes for Women Entrepreneurs in 2026", "matched_keyword": "Women Entrepreneurship"},
-    {"topic": "Girl Child Schemes in India: Eligibility, Amount, and Application Links", "matched_keyword": "Girl Child Scheme"},
-    {"topic": "Women Safety and Support Helplines: National and State Guide", "matched_keyword": "Women Helpline"},
+    # Women welfare schemes
+    {"topic": "Ladli Behna Yojana 33rd Installment Date 2026", "matched_keyword": "Ladli Behna Yojana 33rd Installment Date"},
+    {"topic": "Ladki Bahin Yojana 21st Installment Date Maharashtra 2026", "matched_keyword": "Ladki Bahin Yojana 21st Installment Date"},
+    {"topic": "Subhadra Yojana 6th Installment Date Odisha 2026", "matched_keyword": "Subhadra Yojana 6th Installment Date"},
+    {"topic": "Mahtari Vandana Yojana 24th Installment Date Chhattisgarh", "matched_keyword": "Mahtari Vandana Yojana 24th Installment Date"},
+    {"topic": "Gruha Lakshmi Yojana Next Installment Date Karnataka 2026", "matched_keyword": "Gruha Lakshmi Yojana Installment Date"},
+    {"topic": "Ladli Laxmi Yojana Installment Date 2026 MP", "matched_keyword": "Ladli Laxmi Yojana Installment Date"},
+    {"topic": "Kanyashree Prakalpa Payment Date 2026 West Bengal", "matched_keyword": "Kanyashree Prakalpa Payment Date"},
+    {"topic": "Laxmi Bhandar Payment Date 2026 West Bengal", "matched_keyword": "Laxmi Bhandar Payment Date"},
+    {"topic": "Lado Laxmi Yojana 3rd Installment Date Rajasthan 2026", "matched_keyword": "Lado Laxmi Yojana 3rd Installment Date"},
+    {"topic": "PMMVY Installment Date 2026: Matru Vandana Payment Update", "matched_keyword": "PMMVY Installment Date"},
+    {"topic": "Mukhyamantri Kanya Utthan Yojana Payment Date Bihar 2026", "matched_keyword": "Mukhyamantri Kanya Utthan Yojana Payment Date"},
+    {"topic": "Mukhyamantri Mahila Samman Yojana Payment Date Delhi 2026", "matched_keyword": "Mukhyamantri Mahila Samman Yojana Payment Date"},
+    # Farmer / Agriculture schemes
+    {"topic": "PM Kisan 23rd Installment Date 2026", "matched_keyword": "PM Kisan 23rd Installment Date"},
+    {"topic": "PM Kisan Next Installment Date 2026: Samman Nidhi", "matched_keyword": "PM Kisan Next Installment Date"},
+    {"topic": "Rythu Bharosa Payment Date 2026 Telangana", "matched_keyword": "Rythu Bharosa Payment Date"},
+    {"topic": "Rythu Bandhu Payment Date 2026 Telangana", "matched_keyword": "Rythu Bandhu Payment Date"},
+    {"topic": "Namo Shetkari Yojana 9th Installment Date Maharashtra 2026", "matched_keyword": "Namo Shetkari Yojana 9th Installment Date"},
+    {"topic": "Krishak Bandhu Payment Date 2026 West Bengal", "matched_keyword": "Krishak Bandhu Payment Date"},
+    {"topic": "CM Kisan Kalyan Yojana Installment Date MP 2026", "matched_keyword": "CM Kisan Kalyan Yojana Installment Date"},
+    {"topic": "Annadata Sukhibhava Payment Date 2026 Andhra Pradesh", "matched_keyword": "Annadata Sukhibhava Payment Date"},
+    {"topic": "Kalia Yojana Installment Date 2026 Odisha", "matched_keyword": "Kalia Yojana Installment Date"},
+    {"topic": "YSR Rythu Bharosa Payment Date 2026 AP", "matched_keyword": "YSR Rythu Bharosa Payment Date"},
+    # Housing / Welfare
+    {"topic": "PM Awas Yojana Installment Date 2026 Gramin", "matched_keyword": "PM Awas Yojana Installment Date"},
+    {"topic": "PM Awas Yojana Urban Payment Date 2026", "matched_keyword": "PM Awas Yojana Urban Payment Date"},
+    # Gas / Subsidy
+    {"topic": "Ujjwala Yojana Subsidy Payment Date 2026", "matched_keyword": "Ujjwala Yojana Payment Date"},
+    {"topic": "LPG Subsidy Payment Date 2026", "matched_keyword": "LPG Subsidy Payment Date"},
+    # Financial Inclusion
+    {"topic": "Jan Dhan Yojana Payment Date 2026", "matched_keyword": "Jan Dhan Yojana Payment Date"},
+    {"topic": "Sukanya Samriddhi Yojana Payment Date 2026", "matched_keyword": "Sukanya Samriddhi Yojana Payment Date"},
 ]
 
 # Detection Settings
